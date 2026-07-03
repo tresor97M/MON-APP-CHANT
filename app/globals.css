@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ── LearnPlus Light Theme ── */
+    --background: 220 20% 96%;       /* #f0f3f8 page bg */
+    --foreground: 218 20% 20%;       /* #2d3436 dark text */
+    --card: 0 0% 100%;               /* white cards */
+    --card-foreground: 218 20% 20%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 218 20% 20%;
+    --muted: 220 15% 93%;            /* #eaecf0 light gray inputs / sections */
+    --muted-foreground: 218 10% 52%; /* mid-gray text */
+    --border: 220 15% 88%;
+    --input: 220 15% 88%;
+    --ring: 207 85% 52%;
+
+    /* Blue accent (LearnPlus brand #3490dc) */
+    --primary: 207 85% 52%;
+    --primary-foreground: 0 0% 100%;
+    --primary-soft: 207 60% 92%;
+
+    /* Green for success/secondary badges */
+    --secondary: 151 60% 46%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Orange accent */
+    --accent: 38 95% 55%;
+    --accent-foreground: 218 20% 20%;
+
+    --success: 142 70% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 95% 55%;
+    --warning-foreground: 218 20% 20%;
+    --destructive: 0 84% 62%;
+    --destructive-foreground: 0 0% 100%;
+
+    --chart-1: 207 85% 52%;  /* blue */
+    --chart-2: 151 60% 46%;  /* green */
+    --chart-3: 38 95% 55%;   /* orange */
+    --chart-4: 280 70% 60%;  /* purple */
+    --chart-5: 0 84% 62%;    /* red */
+
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 224 28% 12%;
+    --foreground: 210 40% 96%;
+    --card: 224 24% 17%;
+    --card-foreground: 210 40% 96%;
+    --popover: 224 24% 17%;
+    --popover-foreground: 210 40% 96%;
+    --muted: 224 20% 22%;
+    --muted-foreground: 220 15% 65%;
+    --border: 224 20% 26%;
+    --input: 224 20% 26%;
+    --ring: 207 85% 52%;
+
+    --primary: 207 85% 52%;
+    --primary-foreground: 0 0% 100%;
+    --primary-soft: 207 40% 20%;
+
+    --secondary: 151 60% 46%;
+    --secondary-foreground: 0 0% 100%;
+
+    --accent: 38 95% 55%;
+    --accent-foreground: 224 28% 12%;
+
+    --success: 142 70% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 95% 55%;
+    --warning-foreground: 224 28% 12%;
+    --destructive: 0 84% 62%;
+    --destructive-foreground: 0 0% 100%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "ss01", "cv01", "cv11";
+  }
+  ::selection {
+    background-color: hsla(207, 85%, 52%, 0.2);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .glass {
+    background-color: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(52, 144, 220, 0.12);
+  }
+  .dark .glass {
+    background-color: rgba(30, 40, 60, 0.55);
+    backdrop-filter: blur(20px) saturate(190%);
+    border: 1px solid rgba(52, 144, 220, 0.18);
+  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
