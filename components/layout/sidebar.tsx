@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Compass, Trophy, User, Mail, Settings, Play, Brain, Video, Award, Users, MessageSquare, HelpCircle, BarChart2, BookOpen, Edit2 } from 'lucide-react';
+import { Home, Compass, Trophy, User, Mail, Settings, Brain, Video, Award, MessageSquare, HelpCircle, BarChart2, BookOpen, Edit2, LogOut } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
+import { useLang } from '@/hooks/use-lang';
 
 type NavItem = {
   href: string;
@@ -16,50 +18,83 @@ type NavItem = {
 type NavSection = {
   title: string;
   items: NavItem[];
+  adminOnly?: boolean;
 };
 
-const sections: NavSection[] = [
-  {
-    title: 'APPLICATIONS',
-    items: [
-      { href: '/', label: 'Student', icon: Home },
-      { href: '/instructor', label: 'Instructor', icon: User }
-    ]
-  },
-  {
-    title: 'ACCOUNT',
-    items: [
-      { href: '/account', label: 'Account', icon: Settings },
-      { href: '/messages', label: 'Messages', icon: Mail }
-    ]
-  },
-  {
-    title: 'STUDENT',
-    items: [
-      { href: '/parcours', label: 'Browse Courses', icon: Compass },
-      { href: '/lecon/1', label: 'Take Course', icon: Video },
-      { href: '/lecon/1', label: 'Take a Quiz', icon: Brain },
-      { href: '/profil', label: 'Quiz Results', icon: Award },
-      { href: '/parcours', label: 'My Courses', icon: Compass, badge: 'PRO', badgeColor: 'bg-primary text-primary-foreground' },
-      { href: '/communaute/forum', label: 'Forum', icon: MessageSquare },
-      { href: '/communaute/aide', label: 'Help Center', icon: HelpCircle },
-    ]
-  },
-  {
-    title: 'INSTRUCTOR',
-    items: [
-      { href: '/instructor', label: 'Dashboard', icon: BarChart2 },
-      { href: '/instructor/cours', label: 'Manage Courses', icon: BookOpen },
-      { href: '/instructor/cours/nouveau', label: 'Add/Edit Course', icon: Edit2 },
-      { href: '/instructor/lecon/nouvelle', label: 'Add Lesson', icon: Video },
-      { href: '/instructor/quiz', label: 'Manage Quizzes', icon: Brain },
-      { href: '/messages', label: 'Messages', icon: Mail },
-    ]
+const getSections = (userProfile: any, isAdminView: boolean, lang: string): NavSection[] => {
+  const isAdmin = userProfile?.role === 'admin' || userProfile?.role === 'super_admin';
+  const isSuper = userProfile?.role === 'super_admin';
+
+  if (isAdminView && isAdmin) {
+    // Version Espace Admin complète (conforme à "INSTRUCTOR PAGES")
+    return [
+      {
+        title: 'APPLICATIONS',
+        items: [
+          { href: '/', label: lang === 'fr' ? 'Espace Élève' : 'Student Space', icon: Home },
+          { href: '/admin', label: lang === 'fr' ? 'Espace Admin' : 'Admin Space', icon: User }
+        ]
+      },
+      {
+        title: lang === 'fr' ? 'COMPTE' : 'ACCOUNT',
+        items: [
+          { href: '/account', label: lang === 'fr' ? 'Mon Compte' : 'My Account', icon: Settings },
+          { href: '/messages', label: lang === 'fr' ? 'Mes Messages' : 'My Messages', icon: Mail }
+        ]
+      },
+      {
+        title: lang === 'fr' ? 'ADMINISTRATEUR' : 'INSTRUCTOR',
+        items: [
+          { href: '/admin/cours', label: lang === 'fr' ? 'Gérer les cours' : 'Course Manager', icon: BookOpen },
+          { href: '/admin/quiz', label: lang === 'fr' ? 'Gérer les quiz' : 'Quiz Manager', icon: Brain },
+          { href: '/admin/earnings', label: lang === 'fr' ? 'Gains' : 'Earnings', icon: BarChart2 },
+          { href: '/admin/statement', label: lang === 'fr' ? 'Rapports' : 'Statement', icon: Award },
+          { href: '/communaute/forum', label: lang === 'fr' ? 'Forum de discussion' : 'Community', icon: MessageSquare },
+          { href: '/communaute/aide', label: lang === 'fr' ? 'Centre d\'aide' : 'Help Center', icon: HelpCircle },
+          ...(isSuper ? [{ href: '/admin/acces', label: lang === 'fr' ? 'Gestion Accès' : 'Access Manager', icon: Settings }] : []),
+        ]
+      }
+    ];
   }
-];
+
+  // Version Espace Élève standard
+  return [
+    {
+      title: 'APPLICATIONS',
+      items: [
+        { href: '/', label: lang === 'fr' ? 'Espace Élève' : 'Student Space', icon: Home },
+        ...(isAdmin ? [{ href: '/admin', label: lang === 'fr' ? 'Espace Admin' : 'Admin Space', icon: User }] : [])
+      ]
+    },
+    {
+      title: lang === 'fr' ? 'COMPTE' : 'ACCOUNT',
+      items: [
+        { href: '/account', label: lang === 'fr' ? 'Mon Compte' : 'My Account', icon: Settings },
+        { href: '/messages', label: lang === 'fr' ? 'Mes Messages' : 'My Messages', icon: Mail }
+      ]
+    },
+    {
+      title: lang === 'fr' ? 'ÉLÈVE' : 'STUDENT',
+      items: [
+        { href: '/parcours', label: lang === 'fr' ? 'Parcourir les cours' : 'Browse Courses', icon: Compass },
+        { href: '/lecon/1', label: lang === 'fr' ? 'Suivre une leçon' : 'Take Course', icon: Video },
+        { href: '/lecon/1', label: lang === 'fr' ? 'Faire un quiz' : 'Take Quiz', icon: Brain },
+        { href: '/profil', label: lang === 'fr' ? 'Résultats des quiz' : 'Quiz Results', icon: Award },
+        { href: '/parcours', label: lang === 'fr' ? 'Mes cours' : 'My Courses', icon: Compass, badge: 'PRO', badgeColor: 'bg-primary text-primary-foreground' },
+        { href: '/communaute/forum', label: lang === 'fr' ? 'Forum de discussion' : 'Forum', icon: MessageSquare },
+        { href: '/communaute/aide', label: lang === 'fr' ? 'Centre d\'aide' : 'Help Center', icon: HelpCircle },
+      ]
+    }
+  ];
+};
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { lang } = useLang();
+  const { userProfile, signOut } = useAuth();
+  
+  const isAdminView = pathname.startsWith('/admin');
+  const sections = getSections(userProfile, isAdminView, lang);
 
   return (
     <>
@@ -106,16 +141,30 @@ export function Sidebar() {
           ))}
         </div>
 
-        {/* Upgrade card at bottom */}
-        <div className="p-3 border-t border-primary/10">
-          <div className="rounded-2xl bg-gradient-to-br from-primary/20 via-secondary/10 to-transparent border border-primary/20 p-3.5 relative overflow-hidden">
-            <div className="absolute -right-6 -bottom-6 w-16 h-16 bg-primary/10 rounded-full blur-xl" />
-            <div className="text-[11px] font-bold text-white mb-0.5 relative z-10">Passe Premium</div>
-            <div className="text-[10px] text-white/50 leading-relaxed mb-2.5 relative z-10">Analyse vocale et leçons illimitées.</div>
-            <button className="w-full text-[10px] font-bold bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-lg py-1.5 hover:opacity-90 transition-opacity relative z-10 shadow-md shadow-primary/10">
-              Découvrir
+        {/* Bottom area */}
+        <div className="p-3 border-t border-primary/10 space-y-2">
+          {isAdminView ? (
+            <button 
+              onClick={() => signOut()}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-semibold hover:bg-red-500/20 transition-all shadow-md"
+            >
+              <LogOut className="w-4 h-4" />
+              {lang === 'fr' ? 'Déconnexion' : 'Log Out'}
             </button>
-          </div>
+          ) : (
+            <div className="rounded-2xl bg-gradient-to-br from-primary/20 via-secondary/10 to-transparent border border-primary/20 p-3.5 relative overflow-hidden">
+              <div className="absolute -right-6 -bottom-6 w-16 h-16 bg-primary/10 rounded-full blur-xl" />
+              <div className="text-[11px] font-bold text-white mb-0.5 relative z-10">
+                {lang === 'fr' ? 'Passe Premium' : 'Upgrade to Premium'}
+              </div>
+              <div className="text-[10px] text-white/50 leading-relaxed mb-2.5 relative z-10">
+                {lang === 'fr' ? 'Analyse vocale et leçons illimitées.' : 'Unlock real-time feedback & extra levels.'}
+              </div>
+              <button className="w-full text-[10px] font-bold bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-lg py-1.5 hover:opacity-90 transition-opacity relative z-10 shadow-md shadow-primary/10">
+                {lang === 'fr' ? 'Découvrir' : 'Discover'}
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -124,19 +173,19 @@ export function Sidebar() {
         <div className="flex items-center justify-around h-16 px-2 text-white">
           <Link href="/" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5 text-xs', pathname === '/' ? 'text-primary' : 'text-white/55')}>
             <Home className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">Accueil</span>
+            <span className="text-[9px] font-semibold">{lang === 'fr' ? 'Accueil' : 'Home'}</span>
           </Link>
           <Link href="/parcours" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5 text-xs', pathname === '/parcours' ? 'text-primary' : 'text-white/55')}>
             <Compass className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">Parcours</span>
+            <span className="text-[9px] font-semibold">{lang === 'fr' ? 'Parcours' : 'Browse'}</span>
           </Link>
           <Link href="/ligue" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5 text-xs', pathname === '/ligue' ? 'text-primary' : 'text-white/55')}>
             <Trophy className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">Ligue</span>
+            <span className="text-[9px] font-semibold">{lang === 'fr' ? 'Ligue' : 'League'}</span>
           </Link>
           <Link href="/profil" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5 text-xs', pathname === '/profil' ? 'text-primary' : 'text-white/55')}>
             <User className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">Profil</span>
+            <span className="text-[9px] font-semibold">{lang === 'fr' ? 'Profil' : 'Profile'}</span>
           </Link>
         </div>
       </nav>

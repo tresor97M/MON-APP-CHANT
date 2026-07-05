@@ -6,6 +6,20 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   images: { unoptimized: true },
+  
+  // Résout définitivement les blocages de fichiers et désynchronisations
+  // causés par la synchronisation OneDrive/Windows en mode développement
+  webpack: (config, { dev, isServer }) => {
+    if (dev) {
+      config.watchOptions = {
+        poll: 3000, // Vérifie les fichiers toutes les 3s (soulage le processeur et le disque)
+        aggregateTimeout: 600, // Laisse le temps aux écritures de se terminer
+        ignored: ['**/.git', '**/node_modules', '**/.next'],
+      };
+    }
+    return config;
+  },
+
   async headers() {
     return [
       {

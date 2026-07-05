@@ -72,6 +72,8 @@ export type UserProfile = {
   bio: string | null; location: string | null; phone: string | null; avatar_url: string | null;
   show_email: boolean; show_progress: boolean; allow_messages: boolean;
   notify_email: boolean; notify_security: boolean;
+  role: string; learning_profile: string | null; instrument: string | null;
+  admin_permissions: string[] | null;
   created_at: string; updated_at: string;
 };
 
