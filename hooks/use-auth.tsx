@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 type AuthCtx = {
   session: Session | null;
@@ -25,6 +25,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return;
+    }
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
@@ -35,19 +39,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  const notConfiguredError =
+    "Supabase n'est pas configuré. Ajoutez les variables NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY.";
+
   const signIn = async (email: string, password: string) => {
+    if (!isSupabaseConfigured) return { error: notConfiguredError };
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error?.message || null };
   };
 
   const signUp = async (email: string, password: string, name: string) => {
+    if (!isSupabaseConfigured) return { error: notConfiguredError };
     const { error } = await supabase.auth.signUp({
       email, password, options: { data: { name } },
     });
     return { error: error?.message || null };
   };
 
-  const signOut = async () => { await supabase.auth.signOut(); };
+  const signOut = async () => {
+    if (!isSupabaseConfigured) return;
+    await supabase.auth.signOut();
+  };
 
   return (
     <AuthContext.Provider value={{ session, user: session?.user || null, loading, signIn, signUp, signOut }}>

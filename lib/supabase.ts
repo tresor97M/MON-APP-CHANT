@@ -3,13 +3,24 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    storageKey: 'los-auth',
-  },
-});
+/**
+ * True when real Supabase credentials are available.
+ * When false, the exported client uses harmless placeholder values so the
+ * app can render without crashing — any actual Supabase call will fail.
+ */
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder-anon-key',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      storageKey: 'los-auth',
+    },
+  }
+);
 
 export type Skill = {
   id: string; slug: string; name: string; tagline: string | null;
