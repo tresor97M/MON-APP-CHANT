@@ -1,27 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Check, X, Minus } from 'lucide-react';
+import { ArrowLeft, Check, X } from 'lucide-react';
+import { useLang } from '@/hooks/use-lang';
 
-const QUIZ_TITLE = 'Vue.js Display Quiz';
+const QUIZ_TITLE = 'Quiz de Justesse Vocale';
 const QUESTIONS = [
-  { text: 'The MVC architectural pattern', answers: [
-    { student: 'Léa B.', answer: 'Model View Controller', correct: true },
-    { student: 'Marc D.', answer: 'Main Visual Core', correct: false },
-    { student: 'Sophie L.', answer: 'Model View Controller', correct: true },
-    { student: 'Jules B.', answer: 'Module View Container', correct: false },
+  { text: 'Identification du Do3', answers: [
+    { student: 'Léa B.', answer: 'Correctement ciblé à 130.8Hz', correct: true },
+    { student: 'Marc D.', answer: 'Trop haut (138Hz)', correct: false },
+    { student: 'Sophie L.', answer: 'Correctement ciblé à 130.5Hz', correct: true },
+    { student: 'Jules B.', answer: 'Trop bas (122Hz)', correct: false },
   ]},
-  { text: 'Database Models', answers: [
-    { student: 'Léa B.', answer: 'Entity-relationship', correct: true },
-    { student: 'Marc D.', answer: 'Entity-relationship', correct: true },
-    { student: 'Sophie L.', answer: 'Relational only', correct: false },
-    { student: 'Jules B.', answer: 'Entity-relationship', correct: true },
+  { text: 'Saut d\'octave Do3 - Do4', answers: [
+    { student: 'Léa B.', answer: 'Intervalle juste', correct: true },
+    { student: 'Marc D.', answer: 'Intervalle juste', correct: true },
+    { student: 'Sophie L.', answer: 'Saut trop court', correct: false },
+    { student: 'Jules B.', answer: 'Intervalle juste', correct: true },
   ]},
-  { text: 'Request Routes', answers: [
-    { student: 'Léa B.', answer: 'GET /api/users', correct: true },
-    { student: 'Marc D.', answer: 'GET /api/users', correct: true },
-    { student: 'Sophie L.', answer: 'POST /api/users', correct: false },
-    { student: 'Jules B.', answer: 'PATCH /api/users', correct: false },
+  { text: 'Stabilité du souffle (5 secondes)', answers: [
+    { student: 'Léa B.', answer: 'Flux d\'air stable', correct: true },
+    { student: 'Marc D.', answer: 'Flux d\'air stable', correct: true },
+    { student: 'Sophie L.', answer: 'Perte de soutien', correct: false },
+    { student: 'Jules B.', answer: 'Variations d\'amplitude importantes', correct: false },
   ]},
 ];
 
@@ -33,15 +34,19 @@ const SUMMARY = [
 ];
 
 export default function ReviewQuizPage() {
+  const { lang } = useLang();
+
   return (
     <div className="space-y-6 animate-fade-in max-w-4xl mx-auto">
-      <Link href="/instructor/quiz" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-        <ArrowLeft className="w-4 h-4" /> Retour aux quiz
+      <Link href="/admin/quiz" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <ArrowLeft className="w-4 h-4" /> {lang === 'fr' ? 'Retour aux quiz' : 'Back to quizzes'}
       </Link>
 
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">{QUIZ_TITLE}</h1>
-        <p className="text-sm text-muted-foreground mt-1">Résultats des étudiants — Review Quiz</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          {lang === 'fr' ? 'Résultats des étudiants — Revue du Quiz' : 'Student results — Review Quiz'}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -70,7 +75,7 @@ export default function ReviewQuizPage() {
 
         {/* Scores sidebar */}
         <div className="space-y-4">
-          <h2 className="font-bold text-sm text-foreground">Result</h2>
+          <h2 className="font-bold text-sm text-foreground">{lang === 'fr' ? 'Résultat' : 'Result'}</h2>
           <div className="bg-white rounded-2xl border border-border p-5 shadow-sm">
             <div className="space-y-3">
               {SUMMARY.map((s, i) => (
@@ -90,11 +95,11 @@ export default function ReviewQuizPage() {
             </div>
             <div className="mt-5 pt-4 border-t border-border text-center">
               <div className="font-display text-3xl font-bold text-foreground">
-                {(SUMMARY.reduce((acc, s) => acc + s.score, 0) / SUMMARY.length).toFixed(2)}
+                {Math.round((SUMMARY.reduce((acc, s) => acc + s.score, 0) / SUMMARY.length) * 100)}%
               </div>
-              <div className="text-xs text-muted-foreground mt-1">Score moyen</div>
+              <div className="text-xs text-muted-foreground mt-1">{lang === 'fr' ? 'Score moyen' : 'Average score'}</div>
               <button className="mt-3 w-full py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 transition-opacity">
-                Review
+                {lang === 'fr' ? 'Revoir les réponses' : 'Review'}
               </button>
             </div>
           </div>

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Save, Plus, Trash2, Check } from 'lucide-react';
+import { useLang } from '@/hooks/use-lang';
 
 type Question = {
   id: number;
@@ -14,6 +15,7 @@ type Question = {
 const defaultQ: Question = { id: 1, text: '', options: ['', '', '', ''], correct: 0 };
 
 export default function AddEditQuizPage() {
+  const { lang } = useLang();
   const [quizTitle, setQuizTitle] = useState('');
   const [questions, setQuestions] = useState<Question[]>([{ ...defaultQ }]);
   const [saved, setSaved] = useState(false);
@@ -42,31 +44,35 @@ export default function AddEditQuizPage() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-2xl mx-auto">
-      <Link href="/instructor/quiz" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-        <ArrowLeft className="w-4 h-4" /> Retour aux quiz
+      <Link href="/admin/quiz" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <ArrowLeft className="w-4 h-4" /> {lang === 'fr' ? 'Retour aux quiz' : 'Back to quizzes'}
       </Link>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Add / Edit Quiz</h1>
-          <p className="text-sm text-muted-foreground mt-1">Créez des questions à choix multiples.</p>
+          <h1 className="font-display text-2xl font-bold text-foreground">
+            {lang === 'fr' ? 'Créer / Modifier un Quiz' : 'Add / Edit Quiz'}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {lang === 'fr' ? 'Configurez les questions à choix multiples de votre quiz.' : 'Create multiple-choice questions.'}
+          </p>
         </div>
         <button onClick={() => { setSaved(true); setTimeout(() => setSaved(false), 2000); }}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm ${saved ? 'bg-green-500 text-white' : 'bg-primary text-primary-foreground hover:opacity-90'}`}>
-          <Save className="w-4 h-4" /> {saved ? 'Sauvegardé !' : 'Save Quiz'}
+          <Save className="w-4 h-4" /> {saved ? (lang === 'fr' ? 'Sauvegardé !' : 'Saved!') : (lang === 'fr' ? 'Enregistrer le quiz' : 'Save Quiz')}
         </button>
       </div>
 
       {/* Quiz title */}
       <div className="bg-white rounded-2xl border border-border p-5 shadow-sm space-y-4">
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-foreground">Titre du Quiz</label>
+          <label className="text-xs font-bold text-foreground">{lang === 'fr' ? 'Titre du Quiz' : 'Quiz Title'}</label>
           <input type="text" value={quizTitle} onChange={e => setQuizTitle(e.target.value)}
-            placeholder="Ex: Vue.js Display Quiz"
+            placeholder="Ex: Quiz de Respiration Diaphragmatique"
             className="w-full px-4 py-2.5 rounded-xl border border-border bg-muted/30 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground" />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-foreground">Cours associé</label>
+            <label className="text-xs font-bold text-foreground">{lang === 'fr' ? 'Cours associé' : 'Associated Course'}</label>
             <select className="w-full px-4 py-2.5 rounded-xl border border-border bg-muted/30 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/15">
               <option>Justesse Vocale</option>
               <option>Maîtrise du Vibrato</option>
@@ -74,10 +80,10 @@ export default function AddEditQuizPage() {
             </select>
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-foreground">Thumbnail (aperçu)</label>
+            <label className="text-xs font-bold text-foreground">{lang === 'fr' ? 'Miniature (aperçu)' : 'Thumbnail'}</label>
             <div className="flex items-center gap-2">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-secondary text-white text-sm font-bold grid place-items-center">V</div>
-              <span className="text-xs text-muted-foreground">Image du cours</span>
+              <span className="text-xs text-muted-foreground">{lang === 'fr' ? 'Image du cours' : 'Course image'}</span>
             </div>
           </div>
         </div>
@@ -95,10 +101,12 @@ export default function AddEditQuizPage() {
               </button>
             </div>
             <input type="text" value={q.text} onChange={e => updateQuestion(q.id, 'text', e.target.value)}
-              placeholder="#1 Quelle commande pour afficher résultat ?"
+              placeholder={lang === 'fr' ? '#1 Quelle est la définition du soutien abdominal ?' : '#1 Enter question here...'}
               className="w-full px-4 py-2.5 rounded-xl border border-border bg-muted/30 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground" />
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground">Options (sélectionnez la bonne réponse)</label>
+              <label className="text-xs font-semibold text-muted-foreground">
+                {lang === 'fr' ? 'Options (sélectionnez la bonne réponse)' : 'Options (select the correct answer)'}
+              </label>
               {q.options.map((opt, oIdx) => (
                 <div key={oIdx} className="flex items-center gap-2">
                   <button onClick={() => updateQuestion(q.id, 'correct', oIdx)}
@@ -117,7 +125,7 @@ export default function AddEditQuizPage() {
 
       <button onClick={addQuestion}
         className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-primary/30 text-sm font-semibold text-primary hover:bg-primary/5 hover:border-primary/60 transition-all">
-        <Plus className="w-4 h-4" /> Ajouter une question
+        <Plus className="w-4 h-4" /> {lang === 'fr' ? 'Ajouter une question' : 'Add Question'}
       </button>
     </div>
   );

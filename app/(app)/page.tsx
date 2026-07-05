@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Flame, Zap, Target, TrendingUp, ChevronRight, Sparkles, Clock, Award, Brain, Calendar } from 'lucide-react';
+import { Flame, Zap, Target, TrendingUp, ChevronRight, Sparkles, Clock, Award, Brain, Calendar, Lock, Check } from 'lucide-react';
 import { supabase, type UserStats, type Lesson, type UserProgress, type Module, type Path, type Skill } from '@/lib/supabase';
 import { useAuth } from '@/hooks/use-auth';
 import { Maestro, getMaestroMessage } from '@/components/maestro';
@@ -22,36 +22,93 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [maestroMsg, setMaestroMsg] = useState('Salut ! Prêt à chanter aujourd\'hui ?');
 
+  // Breathing warmup states
+  const [breathingActive, setBreathingActive] = useState(false);
+  const [breathingPhase, setBreathingPhase] = useState<'inspire' | 'retention' | 'expire'>('inspire');
+  const [breathingSeconds, setBreathingSeconds] = useState(4);
+
+  useEffect(() => {
+    let interval: any = null;
+    if (breathingActive) {
+      interval = setInterval(() => {
+        setBreathingSeconds((prev) => {
+          if (prev <= 1) {
+            setBreathingPhase((phase) => {
+              if (phase === 'inspire') return 'retention';
+              if (phase === 'retention') return 'expire';
+              return 'inspire';
+            });
+            return 4;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      setBreathingPhase('inspire');
+      setBreathingSeconds(4);
+    }
+    return () => clearInterval(interval);
+  }, [breathingActive]);
+
   useEffect(() => {
     (async () => {
-      const [statsResult, progressResult, userBadgesResult, badgesResult, attemptsResult] = await Promise.all([
+      const [statsResult, lessonsResult, userProgressResult, userBadgesResult, badgesResult, attemptsResult] = await Promise.all([
         supabase.from('user_stats').select('*').limit(1).maybeSingle(),
-        supabase.from('user_progress').select('*, lesson:lessons(*, module:modules(*, path:paths(*, skill:skills(*))))').eq('status', 'available').order('updated_at', { ascending: true }).limit(4),
+        supabase.from('lessons').select('*, module:modules(*)').order('sort_order', { ascending: true }),
+        supabase.from('user_progress').select('*'),
         supabase.from('user_badges').select('*', { count: 'exact', head: true }),
         supabase.from('badges').select('*', { count: 'exact', head: true }),
         supabase.from('attempts').select('score').order('created_at', { ascending: false }).limit(20)
       ]);
 
-      const s = statsResult.data;
-      if (s) setStats(s);
+      let s = statsResult.data;
+      if (!s) {
+        const defaultStats = {
+          total_xp: 0,
+          level: 1,
+          streak_days: 0,
+          daily_goal_xp: 50,
+          daily_xp: 0,
+          weekly_xp: 0,
+        };
+        const { data: newStats } = await supabase.from('user_stats').insert(defaultStats).select().maybeSingle();
+        s = newStats || { id: 'default-stats', ...defaultStats, last_active_date: null };
+      }
+      setStats(s);
 
-      if (progressResult.data) {
-        const items: ContinueItem[] = progressResult.data
-          .filter((p: any) => p.lesson)
-          .map((p: any) => ({
-            lesson: p.lesson,
-            module: p.lesson.module,
-            path: p.lesson.module.path,
-            skill: p.lesson.module.path.skill,
-            progress: {
-              id: p.id,
-              lesson_id: p.lesson_id,
-              status: p.status,
-              best_score: p.best_score,
-              completed: p.completed,
-              updated_at: p.updated_at
+      if (lessonsResult.data) {
+        const progressList = userProgressResult.data || [];
+        const items: ContinueItem[] = lessonsResult.data.map((l: any, idx: number) => {
+          const progress = progressList.find((p: any) => p.lesson_id === l.id);
+          
+          let status = 'locked';
+          if (progress) {
+            status = progress.status;
+          } else if (idx === 0) {
+            status = 'available';
+          } else {
+            const prevLesson = lessonsResult.data[idx - 1];
+            const prevProgress = progressList.find((p: any) => p.lesson_id === prevLesson.id);
+            if (prevProgress && prevProgress.completed) {
+              status = 'available';
             }
-          }));
+          }
+
+          return {
+            lesson: l,
+            module: l.module || { name: 'Fondamentaux' },
+            path: {} as any,
+            skill: {} as any,
+            progress: {
+              id: progress?.id || `temp-${l.id}`,
+              lesson_id: l.id,
+              status: status as any,
+              best_score: progress?.best_score || 0,
+              completed: progress?.completed || false,
+              updated_at: progress?.updated_at || new Date().toISOString()
+            }
+          };
+        });
         setContinueItems(items);
       }
 
@@ -60,11 +117,10 @@ export default function HomePage() {
       setAttempts(attemptsResult.data || []);
       setLoading(false);
 
-      // Contextual Maestro message
       if (s) {
         if (s.streak_days >= 7) setMaestroMsg(getMaestroMessage('streak'));
         else if (s.daily_xp === 0) setMaestroMsg('Salut ! On commence la journée par un peu de chant ?');
-        else setMaestroMsg('Bon retour ! Continue là où tu t\'es arrêté.');
+        else setMaestroMsg('Bon retour ! Continue ton parcours d\'apprentissage.');
       }
     })();
   }, []);
@@ -93,7 +149,7 @@ export default function HomePage() {
     return { label: days[(d.getDay() + 6) % 7], date: d.getDate(), isToday, isActive, isFuture };
   });
 
-  const recommended = continueItems[0];
+  const recommended = continueItems.find(item => item.progress?.status === 'available' && !item.progress?.completed) || continueItems.find(item => item.progress?.status === 'available') || continueItems[0];
 
   const radarData = [
     { subject: 'Justesse', A: avgAccuracy || 75 },
@@ -201,32 +257,86 @@ export default function HomePage() {
           </section>
         )}
 
-        {/* Continue learning */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-lg font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground via-foreground to-secondary">Continue ton parcours</h2>
-            <Link href="/parcours" className="text-xs font-semibold text-muted-foreground hover:text-primary transition-colors">Tout voir</Link>
+        {/* Sentier Aventure Élève (Duolingo style) */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between border-b border-border/40 pb-2">
+            <div>
+              <h2 className="font-display text-base font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground via-foreground to-secondary">Mon Sentier d'Apprentissage</h2>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Complète chaque étape pour débloquer la suite</p>
+            </div>
+            <Link href="/parcours" className="text-xs font-semibold text-muted-foreground hover:text-primary transition-colors">Vue en grille</Link>
           </div>
+
           {continueItems.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-border/40 p-8 text-center text-sm text-muted-foreground">Aucune leçon disponible pour l'instant.</div>
+            <div className="rounded-3xl border border-dashed border-border/40 p-8 text-center text-sm text-muted-foreground">Aucun exercice disponible pour l'instant.</div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {continueItems.map((item) => (
-                <Link key={item.lesson.id} href={`/lecon/${item.lesson.id}`} className="group rounded-2xl bg-card/40 border border-border/40 p-4 hover:border-primary/50 hover:bg-card/85 hover:shadow-lg transition-all duration-300">
-                  <div className="flex items-start gap-3">
-                    <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-primary/20 to-secondary/10 text-primary shrink-0 transition-transform group-hover:scale-105"><Sparkles className="w-5 h-5" /></div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider truncate">{item.module.name}</div>
-                      <div className="font-semibold text-sm leading-snug mt-1 text-foreground truncate group-hover:text-primary transition-colors">{item.lesson.name}</div>
-                      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground/80">
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{item.lesson.duration_min} min</span>
-                        <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-secondary" />+{item.lesson.xp_reward} XP</span>
+            <div className="relative py-8 bg-slate-900/5 rounded-3xl border border-border/40 p-6 overflow-hidden flex flex-col items-center gap-8 min-h-[450px]">
+              {/* Ligne pointillée sinueuse verticale reliant les bulles */}
+              <div className="absolute inset-y-0 w-1 bg-gradient-to-b from-primary/30 via-secondary/30 to-muted/10 left-1/2 -translate-x-1/2 border-dashed border-l-2 border-slate-700/60" />
+              
+              <div className="w-full space-y-12 relative z-10">
+                {continueItems.map((item, idx) => {
+                  const isCompleted = item.progress?.completed;
+                  const isAvailable = item.progress?.status === 'available';
+                  const isLocked = item.progress?.status === 'locked';
+
+                  // Alignement zigzag (gauche, centre, droite)
+                  const alignmentClass = idx % 3 === 0 ? 'justify-start md:pl-24' : idx % 3 === 1 ? 'justify-center' : 'justify-end md:pr-24';
+
+                  return (
+                    <div key={item.lesson.id} className={cn('flex w-full px-4 relative', alignmentClass)}>
+                      <div className="flex flex-col items-center group relative">
+                        {/* Bulle interactive */}
+                        {isLocked ? (
+                          <div className="w-16 h-16 rounded-full flex items-center justify-center bg-[#2d3436] border-4 border-[#1e272e] text-[#57606f] cursor-not-allowed shadow-md relative">
+                            <Lock className="w-5 h-5" />
+                          </div>
+                        ) : (
+                          <Link 
+                            href={`/lecon/${item.lesson.id}`} 
+                            className={cn(
+                              'w-16 h-16 rounded-full flex items-center justify-center border-4 shadow-xl transition-all duration-300 relative hover:scale-110 active:scale-95',
+                              isCompleted 
+                                ? 'bg-green-500 border-green-600 text-white shadow-green-500/20' 
+                                : 'bg-gradient-to-r from-primary to-secondary border-white text-white animate-pulse shadow-primary/30 ring-4 ring-primary/20'
+                            )}
+                          >
+                            {isCompleted ? <Check className="w-6 h-6 stroke-[3]" /> : <Sparkles className="w-6 h-6 text-white" />}
+                            
+                            {/* Bulle de statut XP */}
+                            <span className={cn('absolute -top-1.5 -right-1 px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-widest',
+                              isCompleted ? 'bg-green-700 text-white' : 'bg-secondary text-secondary-foreground animate-bounce'
+                            )}>
+                              {isCompleted ? 'OK' : `+${item.lesson.xp_reward}XP`}
+                            </span>
+                          </Link>
+                        )}
+
+                        {/* Nom de la leçon sous le jalon */}
+                        <div className="text-center mt-2 max-w-[120px]">
+                          <span className="block text-[9px] text-muted-foreground/80 font-bold uppercase tracking-wider truncate">{item.module.name}</span>
+                          <span className={cn('block text-xs font-bold truncate transition-colors',
+                            isLocked ? 'text-muted-foreground/50' : 'text-foreground group-hover:text-primary'
+                          )}>
+                            {item.lesson.name}
+                          </span>
+                        </div>
+
+                        {/* Tooltip descriptif au survol */}
+                        <div className="absolute bottom-full mb-3 bg-[#2d3436]/95 backdrop-blur-md text-white text-xs px-3.5 py-2.5 rounded-2xl border border-gray-700 pointer-events-none opacity-0 group-hover:opacity-100 transition-all duration-200 w-52 text-center leading-normal shadow-2xl z-30 translate-y-1 group-hover:translate-y-0">
+                          <span className="block text-[8px] text-primary font-bold uppercase tracking-widest">{item.module.name}</span>
+                          <span className="block font-bold text-white mt-1 leading-snug">{item.lesson.name}</span>
+                          <span className="block text-[10px] text-white/50 mt-1 italic leading-normal">« {item.lesson.description} »</span>
+                          <div className="flex items-center justify-center gap-2.5 mt-2.5 pt-2 border-t border-gray-700/60 text-[9px] font-bold text-white/80">
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3 text-primary" />{item.lesson.duration_min} min</span>
+                            <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-secondary" />+{item.lesson.xp_reward} XP</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
-                  </div>
-                </Link>
-              ))}
+                  );
+                })}
+              </div>
             </div>
           )}
         </section>
@@ -249,6 +359,65 @@ export default function HomePage() {
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Widget d'Échauffement Respiratoire Guidé */}
+        <div className="rounded-3xl glass shadow-lg p-5 relative overflow-hidden">
+          <div className="flex items-center justify-between border-b border-border/40 pb-3 mb-4">
+            <h3 className="font-bold text-sm text-foreground">Échauffement Respiratoire 🧘</h3>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-secondary/15 text-secondary">Routine</span>
+          </div>
+
+          {!breathingActive ? (
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Préparez vos poumons et votre diaphragme avec un guide visuel de respiration rythmé (4s-4s-4s) avant de chanter.
+              </p>
+              <button 
+                onClick={() => setBreathingActive(true)}
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary text-primary-foreground text-xs font-bold hover:opacity-90 transition-opacity shadow-sm"
+              >
+                Démarrer l'échauffement
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-4 space-y-5">
+              {/* Animated breathing circle */}
+              <div 
+                className={cn('w-28 h-28 rounded-full flex items-center justify-center text-white transition-all duration-1000 shadow-xl border-4',
+                  breathingPhase === 'inspire' ? 'scale-110 bg-gradient-to-tr from-cyan-400 to-blue-500 border-cyan-300 shadow-cyan-500/20' :
+                  breathingPhase === 'retention' ? 'scale-115 bg-gradient-to-tr from-amber-400 to-orange-500 border-amber-300 shadow-orange-500/20' :
+                  'scale-95 bg-gradient-to-tr from-purple-400 to-pink-500 border-purple-300 shadow-purple-500/20'
+                )}
+              >
+                <div className="text-center">
+                  <div className="font-display text-4xl font-extrabold tracking-tight tabular-nums">{breathingSeconds}</div>
+                  <div className="text-[8px] font-bold uppercase tracking-wider mt-0.5">secondes</div>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="text-center space-y-1">
+                <div className="text-sm font-extrabold text-foreground capitalize">
+                  {breathingPhase === 'inspire' ? 'Inspirez par le nez... 👃' :
+                   breathingPhase === 'retention' ? 'Bloquez le souffle... 🛑' :
+                   'Expirez par la bouche... 👄'}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  {breathingPhase === 'inspire' ? 'Gonflez bien le ventre et le diaphragme' :
+                   breathingPhase === 'retention' ? 'Gardez une posture droite et détendue' :
+                   'Relâchez lentement tout l\'air accumulé'}
+                </p>
+              </div>
+
+              <button 
+                onClick={() => setBreathingActive(false)}
+                className="px-4 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-500 text-[10px] font-bold hover:bg-red-500/20 transition-all"
+              >
+                Arrêter
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Streak card & calendar combo */}

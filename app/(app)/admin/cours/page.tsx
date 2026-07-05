@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { PlusCircle, Edit2, Trash2, Eye, Users, BookOpen, MoreVertical } from 'lucide-react';
+import { PlusCircle, Edit2, Trash2, Eye, Users, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useLang } from '@/hooks/use-lang';
 
 const COURSES = [
   { id: 1, title: 'Justesse Vocale — Les Bases', thumb: 'V', students: 23, lessons: 8, status: 'published', rating: 4.8 },
@@ -12,16 +13,22 @@ const COURSES = [
 ];
 
 export default function ManageCoursesPage() {
+  const { lang, t } = useLang();
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">Manage Courses</h1>
-          <p className="text-sm text-muted-foreground mt-1">Créez et gérez vos cours.</p>
+          <h1 className="font-display text-2xl font-bold text-foreground">
+            {lang === 'fr' ? 'Gérer les Cours' : 'Manage Courses'}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {lang === 'fr' ? 'Créez et gérez vos cours.' : 'Create and manage your courses.'}
+          </p>
         </div>
-        <Link href="/instructor/cours/nouveau"
+        <Link href="/admin/cours/nouveau"
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 shadow-sm transition-opacity">
-          <PlusCircle className="w-4 h-4" /> Add Course
+          <PlusCircle className="w-4 h-4" /> {lang === 'fr' ? 'Ajouter un Cours' : 'Add Course'}
         </Link>
       </div>
 
@@ -40,9 +47,9 @@ export default function ManageCoursesPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/30 text-xs text-muted-foreground">
               <tr>
-                <th className="text-left px-5 py-3 font-semibold">Cours</th>
-                <th className="text-left px-5 py-3 font-semibold">Étudiants</th>
-                <th className="text-left px-5 py-3 font-semibold">Leçons</th>
+                <th className="text-left px-5 py-3 font-semibold">{lang === 'fr' ? 'Cours' : 'Course'}</th>
+                <th className="text-left px-5 py-3 font-semibold">{lang === 'fr' ? 'Étudiants' : 'Students'}</th>
+                <th className="text-left px-5 py-3 font-semibold">{lang === 'fr' ? 'Leçons' : 'Lessons'}</th>
                 <th className="text-left px-5 py-3 font-semibold">Statut</th>
                 <th className="text-left px-5 py-3 font-semibold">Actions</th>
               </tr>
@@ -79,7 +86,7 @@ export default function ManageCoursesPage() {
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-2">
                       <Link href={`/lecon/${c.id}`} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-primary"><Eye className="w-4 h-4" /></Link>
-                      <Link href="/instructor/cours/nouveau" className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-primary"><Edit2 className="w-4 h-4" /></Link>
+                      <Link href="/admin/cours/nouveau" className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-primary"><Edit2 className="w-4 h-4" /></Link>
                       <button className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>

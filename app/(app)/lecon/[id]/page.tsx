@@ -47,6 +47,50 @@ const TIPS = [
   'Le vibrato vient naturellement quand la voix est libre — ne le force pas.',
 ];
 
+function autoCorrelate(buffer: Float32Array, sampleRate: number): number {
+  const SIZE = buffer.length;
+  let sum = 0;
+  for (let i = 0; i < SIZE; i++) {
+    sum += buffer[i] * buffer[i];
+  }
+  const rms = Math.sqrt(sum / SIZE);
+  if (rms < 0.005) return -1; // Volume trop faible
+
+  let r1 = 0, r2 = SIZE - 1;
+  const thres = 0.15;
+  for (let i = 0; i < SIZE / 2; i++) {
+    if (Math.abs(buffer[i]) < thres) { r1 = i; break; }
+  }
+  for (let i = SIZE - 1; i >= SIZE / 2; i--) {
+    if (Math.abs(buffer[i]) < thres) { r2 = i; break; }
+  }
+
+  const buf = buffer.subarray(r1, r2);
+  const len = buf.length;
+  if (len < 64) return -1;
+
+  const correlations = new Float32Array(len);
+  for (let i = 0; i < len; i++) {
+    for (let j = 0; j < len - i; j++) {
+      correlations[i] += buf[j] * buf[j + i];
+    }
+  }
+
+  let d = 0;
+  while (correlations[d] > correlations[d + 1]) d++;
+  let maxval = -1;
+  let maxpos = -1;
+  for (let i = d; i < len; i++) {
+    if (correlations[i] > maxval) {
+      maxval = correlations[i];
+      maxpos = i;
+    }
+  }
+
+  let T0 = maxpos;
+  return sampleRate / T0;
+}
+
 export default function LessonPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const { celebrate, playSound } = useCelebration();
@@ -64,7 +108,67 @@ export default function LessonPage({ params }: { params: { id: string } }) {
   const [quizCorrect, setQuizCorrect] = useState(0);
   const [maestroMood, setMaestroMood] = useState<MaestroMood>('idle');
   const [maestroMsg, setMaestroMsg] = useState('');
+  
+  // Real-time pitch states
+  const [detectedPitch, setDetectedPitch] = useState<number | null>(null);
+  const [detectedNoteName, setDetectedNoteName] = useState<string>('');
+  const [centsOff, setCentsOff] = useState<number>(0);
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioDataRef = useRef<number[]>([]);
+
+  // Speech synthesis for Coach Maestro
+  const speakText = (text: string) => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'fr-FR';
+      const voices = window.speechSynthesis.getVoices();
+      const frVoice = voices.find(v => v.lang.startsWith('fr') || v.lang.startsWith('FR'));
+      if (frVoice) utterance.voice = frVoice;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const playReferenceTone = (hz: number) => {
+    if (typeof window !== 'undefined') {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.value = hz;
+      
+      gainNode.gain.setValueAtTime(0.25, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.3);
+      
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      
+      osc.start();
+      osc.stop(ctx.currentTime + 1.3);
+    }
+  };
+
+  const getExerciseTargetHz = () => {
+    const name = current?.name?.toLowerCase() || '';
+    if (name.includes('do3') || name.includes('c3')) return 130.81;
+    if (name.includes('do4') || name.includes('c4')) return 261.63;
+    if (name.includes('sol3') || name.includes('g3')) return 196.00;
+    if (name.includes('la3') || name.includes('a3')) return 220.00;
+    if (name.includes('mi3') || name.includes('e3')) return 164.81;
+    return 220.00;
+  };
+
+  useEffect(() => {
+    if (maestroMsg && phase !== 'complete') {
+      speakText(maestroMsg);
+    }
+  }, [maestroMsg, phase]);
 
   useEffect(() => {
     (async () => {
@@ -87,49 +191,172 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     timerRef.current = null;
   }, []);
 
-  const startRecording = useCallback(() => {
-    setPhase('listening');
-    setMaestroMood('talking');
-    setMaestroMsg(getMaestroMessage('listening'));
-    let t = 0;
-    timerRef.current = setInterval(() => {
-      t += 1;
-      setAudioLevel((prev) => {
-        const next = [...prev];
-        const base = 0.3 + Math.sin(t * 0.4) * 0.25 + Math.random() * 0.3;
-        for (let i = 0; i < next.length; i++) {
-          const dist = Math.abs(i - (next.length / 2 + Math.sin(t * 0.2) * 6));
-          next[i] = Math.max(0.08, base * (1 - dist / next.length) + Math.random() * 0.15);
-        }
-        return next;
-      });
-      if (t > 28) {
-        stopSim();
-        setPhase('analyzing');
-        setMaestroMood('thinking');
-        setMaestroMsg(getMaestroMessage('analyzing'));
-        setTimeout(() => finishExercise(), 1100);
-      }
-    }, 100);
-  }, [stopSim]);
-
   const finishExercise = useCallback(() => {
-    const baseScore = 70 + Math.floor(Math.random() * 28);
-    const acc = Math.min(99, baseScore + Math.floor(Math.random() * 8));
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+
+    const data = audioDataRef.current;
+    audioDataRef.current = [];
+
+    const averageVolume = data.length ? data.reduce((a, b) => a + b, 0) / data.length : 0;
+    
+    if (averageVolume < 3) {
+      setFeedback({
+        score: 15,
+        accuracy: 10,
+        points: [
+          { label: 'Détection vocale', value: 0, status: 'bad' },
+          { label: 'Régularité du flux', value: 0, status: 'bad' },
+          { label: 'Intensité sonore', value: 0, status: 'bad' }
+        ],
+        tip: 'Le micro n\'a détecté aucun son. Assurez-vous d\'autoriser le micro et de chanter/souffler bien fort !'
+      });
+      setScore((s) => s + 15);
+      playSound('wrong');
+      setMaestroMood('thinking');
+      setMaestroMsg('Aïe, je n\'ai rien entendu ! Veux-tu réessayer ?');
+      setPhase('result');
+      return;
+    }
+
+    const variance = data.reduce((acc, val) => acc + Math.pow(val - averageVolume, 2), 0) / data.length;
+    const stability = Math.max(10, Math.min(100, Math.round(100 - (variance * 0.45))));
+    const volumeMatch = Math.max(10, Math.min(100, Math.round(100 - Math.abs(30 - averageVolume) * 1.6)));
+
+    const baseScore = Math.round((stability * 0.6) + (volumeMatch * 0.4));
+    const acc = Math.min(99, baseScore + Math.floor(Math.random() * 4));
+
     const metric = (current?.scoring as Record<string, unknown>)?.metric as string | undefined;
     const points = [
-      { label: metric === 'pitch_accuracy' ? 'Justesse' : metric === 'breath_stability' ? 'Stabilité du souffle' : 'Précision', value: acc, status: (acc >= 85 ? 'good' : acc >= 70 ? 'ok' : 'bad') as 'good' | 'ok' | 'bad' },
-      { label: 'Régularité', value: Math.max(60, acc - 5 - Math.floor(Math.random() * 10)), status: 'ok' as const },
-      { label: 'Confiance', value: Math.max(55, acc - 10 + Math.floor(Math.random() * 8)), status: 'ok' as const },
+      { label: metric === 'pitch_accuracy' ? 'Précision de la hauteur' : 'Régularité diaphragmatique', value: stability, status: (stability >= 75 ? 'good' : 'ok') as 'good' | 'ok' },
+      { label: 'Contrôle du débit d\'air', value: volumeMatch, status: (volumeMatch >= 75 ? 'good' : 'ok') as 'good' | 'ok' },
+      { label: 'Intensité de l\'effort', value: acc, status: (acc >= 75 ? 'good' : 'ok') as 'good' | 'ok' }
     ];
+
     setFeedback({ score: baseScore, accuracy: acc, points, tip: TIPS[Math.floor(Math.random() * TIPS.length)] });
     setScore((s) => s + baseScore);
-    playSound(baseScore >= 85 ? 'correct' : 'wrong');
-    if (baseScore >= 85) { setMaestroMood('happy'); setMaestroMsg(getMaestroMessage('excellent')); }
-    else if (baseScore >= 70) { setMaestroMood('encouraging'); setMaestroMsg(getMaestroMessage('good')); }
+    playSound(baseScore >= 75 ? 'correct' : 'wrong');
+    if (baseScore >= 80) { setMaestroMood('happy'); setMaestroMsg(getMaestroMessage('excellent')); }
+    else if (baseScore >= 65) { setMaestroMood('encouraging'); setMaestroMsg(getMaestroMessage('good')); }
     else { setMaestroMood('thinking'); setMaestroMsg(getMaestroMessage('needsWork')); }
     setPhase('result');
   }, [current, playSound]);
+
+  const startRecording = useCallback(async () => {
+    setPhase('listening');
+    setMaestroMood('talking');
+    setMaestroMsg(getMaestroMessage('listening'));
+    
+    audioDataRef.current = [];
+    setDetectedPitch(null);
+    setDetectedNoteName('');
+    setCentsOff(0);
+    
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      audioContextRef.current = audioCtx;
+      
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024; // Augmenter fftSize pour une meilleure précision du pitch
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      let t = 0;
+      timerRef.current = setInterval(() => {
+        t += 1;
+        
+        if (analyserRef.current) {
+          // 1. Calcul du volume (RMS)
+          const timeData = new Uint8Array(analyserRef.current.frequencyBinCount);
+          analyserRef.current.getByteTimeDomainData(timeData);
+          
+          let sum = 0;
+          for (let i = 0; i < timeData.length; i++) {
+            const val = (timeData[i] - 128) / 128;
+            sum += val * val;
+          }
+          const rms = Math.sqrt(sum / timeData.length);
+          const volume = Math.min(100, Math.round(rms * 300));
+          audioDataRef.current.push(volume);
+
+          // 2. Calcul du Pitch en autocorrélation
+          const buffer = new Float32Array(analyserRef.current.fftSize);
+          analyserRef.current.getFloatTimeDomainData(buffer);
+          const pitch = autoCorrelate(buffer, audioCtx.sampleRate);
+          
+          if (pitch !== -1 && rms > 0.015) {
+            setDetectedPitch(Math.round(pitch));
+            
+            // Conversion fréquence en note musicale midi
+            const noteNum = 12 * (Math.log(pitch / 440) / Math.log(2));
+            const noteIndex = Math.round(noteNum) + 69;
+            const notes = ["Do", "Do#", "Ré", "Ré#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"];
+            const noteName = notes[noteIndex % 12] + (Math.floor(noteIndex / 12) - 1);
+            setDetectedNoteName(noteName);
+            
+            // Calcul de la déviation en Cents
+            const targetNotePitch = 440 * Math.pow(2, (noteIndex - 69) / 12);
+            const cents = Math.floor(1200 * Math.log(pitch / targetNotePitch) / Math.log(2));
+            setCentsOff(Math.max(-50, Math.min(50, cents)));
+          } else {
+            setDetectedPitch(null);
+            setDetectedNoteName('');
+            setCentsOff(0);
+          }
+
+          setAudioLevel((prev) => {
+            const next = [...prev];
+            for (let i = 0; i < next.length; i++) {
+              next[i] = Math.max(0.08, (rms * 2.5) + Math.random() * 0.12);
+            }
+            return next;
+          });
+        }
+
+        if (t > 40) { // 4 secondes de capture réelle
+          stopSim();
+          setPhase('analyzing');
+          setMaestroMood('thinking');
+          setMaestroMsg(getMaestroMessage('analyzing'));
+          setTimeout(() => finishExercise(), 1200);
+        }
+      }, 100);
+
+    } catch (err) {
+      console.error('Accès micro refusé ou impossible :', err);
+      // Fallback simulation propre
+      let t = 0;
+      timerRef.current = setInterval(() => {
+        t += 1;
+        setAudioLevel((prev) => {
+          const next = [...prev];
+          const base = 0.3 + Math.sin(t * 0.4) * 0.2 + Math.random() * 0.25;
+          for (let i = 0; i < next.length; i++) {
+            next[i] = Math.max(0.08, base * (1 - Math.abs(i - 12) / 24) + Math.random() * 0.1);
+          }
+          return next;
+        });
+        if (t > 30) {
+          stopSim();
+          setPhase('analyzing');
+          setMaestroMood('thinking');
+          setMaestroMsg(getMaestroMessage('analyzing'));
+          setTimeout(() => finishExercise(), 1100);
+        }
+      }, 100);
+    }
+  }, [stopSim, finishExercise]);
 
   const startQuiz = useCallback(() => {
     const metric = (current?.scoring as Record<string, unknown>)?.metric as string | undefined;
@@ -366,14 +593,96 @@ export default function LessonPage({ params }: { params: { id: string } }) {
               </div>
             )}
 
-            {/* LISTENING */}
+            {/* LISTENING & PITCH HIGHWAY (Yousician style) */}
             {phase === 'listening' && (
-              <div className="py-6 space-y-4">
-                <div className="h-20">
-                  <AudioVisualizer active bars={24} color="hsl(var(--secondary))" />
+              <div className="py-4 space-y-6 animate-fade-in">
+                {/* Note target & audio cue */}
+                <div className="flex items-center justify-between border-b border-border/40 pb-3 gap-2">
+                  <div className="text-left">
+                    <span className="text-[10px] text-muted-foreground font-semibold block uppercase tracking-wider">Note Cible</span>
+                    <span className="font-display text-base font-bold text-foreground">
+                      {current?.name?.includes('Do3') || current?.name?.includes('C3') ? 'Do3 (130.8 Hz)' :
+                       current?.name?.includes('Do4') || current?.name?.includes('C4') ? 'Do4 (261.6 Hz)' :
+                       current?.name?.includes('Sol3') || current?.name?.includes('G3') ? 'Sol3 (196.0 Hz)' :
+                       current?.name?.includes('La3') || current?.name?.includes('A3') ? 'La3 (220.0 Hz)' :
+                       'Note de référence (220 Hz)'}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => playReferenceTone(getExerciseTargetHz())}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-[10px] font-bold hover:bg-primary/20 transition-all"
+                  >
+                    <Volume2 className="w-3.5 h-3.5" /> Entendre le ton
+                  </button>
                 </div>
-                <div className="text-center flex items-center justify-center gap-2 text-sm text-secondary font-bold uppercase tracking-widest animate-pulse">
-                  <Loader2 className="w-4 h-4 animate-spin text-secondary" /> L'IA écoute...
+
+                {/* Pitch Display Center */}
+                <div className="text-center py-2 space-y-2">
+                  <div className="relative inline-grid place-items-center w-24 h-24 rounded-full bg-slate-900 border-4 border-slate-800 shadow-xl mx-auto overflow-hidden">
+                    {/* Ring glowing color depending on pitch closeness */}
+                    <div className={cn('absolute inset-0 opacity-20 blur-md transition-all duration-300', 
+                      detectedPitch ? (Math.abs(centsOff) <= 12 ? 'bg-success' : centsOff < 0 ? 'bg-cyan-500' : 'bg-orange-500') : 'bg-transparent'
+                    )} />
+                    <div className="relative z-10 text-center">
+                      <div className="font-display text-3xl font-extrabold text-white tracking-tight tabular-nums">
+                        {detectedNoteName || '---'}
+                      </div>
+                      <div className="text-[9px] text-white/50 font-semibold tracking-wider uppercase mt-0.5">
+                        {detectedPitch ? `${detectedPitch} Hz` : 'Chantez...'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Pitch Guidance Text */}
+                  <div className="text-xs font-bold uppercase tracking-wider h-4">
+                    {detectedPitch ? (
+                      Math.abs(centsOff) <= 12 ? (
+                        <span className="text-success animate-pulse">Parfaitement Juste ! ✨</span>
+                      ) : centsOff < 0 ? (
+                        <span className="text-cyan-500">Trop bas ↑ (montez le ton)</span>
+                      ) : (
+                        <span className="text-orange-500">Trop haut ↓ (baissez le ton)</span>
+                      )
+                    ) : (
+                      <span className="text-muted-foreground">Émission d'un son stable attendue</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Cents Offset Tuning Meter */}
+                <div className="space-y-2">
+                  <div className="relative h-4 rounded-full bg-slate-100 border border-border overflow-hidden">
+                    {/* Graduations & Center mark */}
+                    <div className="absolute inset-y-0 left-1/2 w-0.5 bg-slate-400 z-10" />
+                    
+                    {/* Glowing sweet spot zone */}
+                    <div className="absolute inset-y-0 left-[38%] right-[38%] bg-success/15 border-x border-success/10" />
+                    
+                    {/* Moving needle cursor */}
+                    {detectedPitch && (
+                      <div 
+                        className={cn('absolute top-0.5 bottom-0.5 w-3 rounded-full shadow-md z-20 -ml-1.5 transition-all duration-150',
+                          Math.abs(centsOff) <= 12 ? 'bg-success shadow-success/40' : centsOff < 0 ? 'bg-cyan-500 shadow-cyan-500/40' : 'bg-orange-500 shadow-orange-500/40'
+                        )}
+                        style={{ left: `${((centsOff + 50) / 100) * 100}%` }}
+                      />
+                    )}
+                  </div>
+                  <div className="flex justify-between text-[9px] text-muted-foreground font-bold uppercase tracking-widest px-1">
+                    <span>Trop bas</span>
+                    <span className={cn(detectedPitch && Math.abs(centsOff) <= 12 ? 'text-success' : 'text-slate-400')}>{detectedPitch && Math.abs(centsOff) <= 12 ? 'Juste' : 'Zône cible'}</span>
+                    <span>Trop haut</span>
+                  </div>
+                </div>
+
+                {/* Volume Level Spectrogram */}
+                <div className="space-y-1.5">
+                  <div className="h-10">
+                    <AudioVisualizer active bars={24} color={detectedPitch && Math.abs(centsOff) <= 12 ? 'hsl(var(--success))' : 'hsl(var(--secondary))'} />
+                  </div>
+                  <div className="text-center flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
+                    <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" /> Analyse en cours...
+                  </div>
                 </div>
               </div>
             )}
