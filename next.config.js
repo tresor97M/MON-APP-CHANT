@@ -1,19 +1,27 @@
+const withPWA = require('@ducanh2912/next-pwa').default({
+  dest: 'public',
+  cacheOnFrontEndNav: true,
+  aggressiveFrontEndNavCaching: true,
+  reloadOnOnline: true,
+  disable: process.env.NODE_ENV === 'development',
+  workboxOptions: {
+    disableDevLogs: true,
+  },
+});
+
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  eslint: { ignoreDuringBuilds: true },
   reactStrictMode: true,
   poweredByHeader: false,
   images: { unoptimized: true },
-  
-  // Résout définitivement les blocages de fichiers et désynchronisations
-  // causés par la synchronisation OneDrive/Windows en mode développement
-  webpack: (config, { dev, isServer }) => {
+
+  webpack: (config, { dev }) => {
     if (dev) {
       config.watchOptions = {
-        poll: 3000, // Vérifie les fichiers toutes les 3s (soulage le processeur et le disque)
-        aggregateTimeout: 600, // Laisse le temps aux écritures de se terminer
+        poll: 3000,
+        aggregateTimeout: 600,
         ignored: ['**/.git', '**/node_modules', '**/.next'],
       };
     }
@@ -30,14 +38,12 @@ const nextConfig = {
           { key: 'X-XSS-Protection', value: '1; mode=block' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=()' },
-          {
-            key: 'Strict-Transport-Security',
-            value: 'max-age=63072000; includeSubDomains; preload',
-          },
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
         ],
       },
     ];
   },
 };
 
-module.exports = nextConfig;
+module.exports = withPWA(nextConfig);
+

@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ducanh2912/next-pwa": "^10.2.9",
     "@hookform/resolvers": "^3.9.0",
     "@netlify/plugin-nextjs": "^5.15.1",
     "@radix-ui/react-accordion": "^1.2.0",
@@ -55,6 +56,7 @@
     "input-otp": "^1.2.4",
     "lucide-react": "^0.446.0",
     "next": "14.2.35",
+    "next-pwa": "^5.6.0",
     "next-themes": "^0.3.0",
     "postcss": "^8.5.10",
     "react": "18.2.0",
@@ -76,5 +78,8 @@
     "minimatch": "^9.0.7",
     "postcss": "^8.5.10",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/trusted-types": "^2.0.7"
   }
 }

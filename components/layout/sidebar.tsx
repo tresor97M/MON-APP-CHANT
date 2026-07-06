@@ -3,26 +3,27 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Home, Music, CalendarDays, Users, Trophy, User, Mail, Settings,
-  GraduationCap, ClipboardCheck, Megaphone, LogOut, MicVocal,
-  LayoutDashboard, Table2, Stethoscope, ShieldCheck, BookOpenCheck,
-  Sparkles,
+  Home, Music, CalendarDays, Trophy, Settings,
+  GraduationCap, Sparkles, LayoutDashboard,
+  BookOpenCheck, Stethoscope, ShieldCheck, Users, ClipboardCheck, Megaphone, Table2, User,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
-import { isStaff, canManageRoles } from '@/lib/permissions';
+import { isStaff } from '@/lib/permissions';
 import { VOICE_LABELS, ROLE_LABELS, type Role, type VoicePart } from '@/lib/types';
 
-type NavItem = {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-};
+/* ─── Bottom Nav items (mobile, max 5) ──────────────────── */
+const BOTTOM_NAV = [
+  { href: '/',           label: 'Accueil',   icon: Home },
+  { href: '/hymns',      label: 'Cantiques', icon: Music },
+  { href: '/rehearsals', label: 'Répétitions', icon: CalendarDays },
+  { href: '/coach',      label: 'Coach IA',  icon: Sparkles },
+  { href: '/account',    label: 'Profil',    icon: User },
+];
 
-type NavSection = {
-  title: string;
-  items: NavItem[];
-};
+/* ─── Desktop sidebar sections (unchanged logic) ─────────── */
+type NavItem  = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; };
+type NavSection = { title: string; items: NavItem[]; };
 
 function getSections(role: string | undefined, isAdminView: boolean): NavSection[] {
   const staff = isStaff(role);
@@ -39,21 +40,15 @@ function getSections(role: string | undefined, isAdminView: boolean): NavSection
       {
         title: 'DIRECTION',
         items: [
-          { href: '/admin/cantiques', label: 'Cantiques', icon: Music },
-          { href: '/admin/calendrier', label: 'Calendrier (sheet)', icon: Table2 },
-          { href: '/admin/repetitions', label: 'Répétitions & Pointage', icon: ClipboardCheck },
-          { href: '/admin/membres', label: 'Membres & Pupitres', icon: Users },
-          { href: '/admin/evaluations', label: 'Évaluations & Lacunes', icon: Stethoscope },
-          { href: '/admin/formation', label: 'Formation', icon: GraduationCap },
-          { href: '/admin/annonces', label: 'Annonces', icon: Megaphone },
-          ...(canManageRoles(role) ? [{ href: '/admin/acces', label: 'Gestion Accès', icon: ShieldCheck }] : []),
-        ],
-      },
-      {
-        title: 'COMPTE',
-        items: [
-          { href: '/account', label: 'Mon Compte', icon: Settings },
-          { href: '/messages', label: 'Messages', icon: Mail },
+          { href: '/admin', label: 'Tableau de bord', icon: LayoutDashboard },
+          { href: '/admin/repertoire', label: 'Répertoire', icon: Table2 },
+          { href: '/admin/members', label: 'Membres', icon: Users },
+          { href: '/admin/rehearsals', label: 'Répétitions', icon: CalendarDays },
+          { href: '/admin/attendance', label: 'Pointage', icon: ClipboardCheck },
+          { href: '/admin/announcements', label: 'Annonces', icon: Megaphone },
+          { href: '/admin/diagnoses', label: 'Diagnostics', icon: Stethoscope },
+          { href: '/admin/training', label: 'Formations', icon: GraduationCap },
+          ...(role === 'super_admin' ? [{ href: '/admin/roles', label: 'Rôles', icon: ShieldCheck }] : []),
         ],
       },
     ];
@@ -61,139 +56,172 @@ function getSections(role: string | undefined, isAdminView: boolean): NavSection
 
   return [
     {
-      title: 'ESPACES',
-      items: [
-        { href: '/', label: 'Tableau de bord', icon: Home },
-        ...(staff ? [{ href: '/admin', label: 'Espace Direction', icon: LayoutDashboard }] : []),
-      ],
-    },
-    {
       title: 'CHORALE',
       items: [
-        { href: '/cantiques', label: 'Répertoire', icon: Music },
-        { href: '/calendrier', label: 'Calendrier', icon: CalendarDays },
-        { href: '/repetitions', label: 'Répétitions', icon: MicVocal },
-        { href: '/formation', label: 'Formation', icon: BookOpenCheck },
+        { href: '/', label: 'Accueil', icon: Home },
+        { href: '/hymns', label: 'Cantiques', icon: Music },
+        { href: '/rehearsals', label: 'Répétitions', icon: CalendarDays },
+        { href: '/training', label: 'Formation', icon: GraduationCap },
+        { href: '/progress', label: 'Progrès', icon: Trophy },
         { href: '/coach', label: 'Coach IA (Bêta)', icon: Sparkles },
-        { href: '/ligue', label: 'Classement', icon: Trophy },
+        { href: '/notes', label: 'Mes Partitions', icon: BookOpenCheck },
       ],
     },
     {
       title: 'COMPTE',
       items: [
-        { href: '/profil', label: 'Mon Profil', icon: User },
-        { href: '/account', label: 'Paramètres', icon: Settings },
-        { href: '/messages', label: 'Messages', icon: Mail },
+        { href: '/account', label: 'Mon Profil', icon: Settings },
       ],
     },
   ];
 }
 
+/* ─── Desktop Sidebar ────────────────────────────────────── */
 export function Sidebar() {
   const pathname = usePathname();
-  const { userProfile, signOut } = useAuth();
-
+  const { userProfile: profile, signOut } = useAuth();
+  const role = profile?.role;
   const isAdminView = pathname.startsWith('/admin');
-  const sections = getSections(userProfile?.role, isAdminView);
-  const voice = userProfile?.voice_part as VoicePart | null;
-  const role = (userProfile?.role || 'choriste') as Role;
+  const sections = getSections(role, isAdminView);
+  const staff = isStaff(role);
+
+  const voiceLabel =
+    profile?.instrument
+      ? profile.instrument
+      : profile?.voice_part
+        ? VOICE_LABELS[profile.voice_part as VoicePart] ?? profile.voice_part
+        : null;
 
   return (
     <>
-      {/* Sidebar desktop */}
-      <aside className="hidden md:flex md:flex-col md:w-64 md:fixed md:top-16 md:bottom-0 md:left-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6 no-scrollbar">
-          {sections.map((section, sIdx) => (
-            <div key={sIdx} className="space-y-1.5">
-              <div className="px-3 text-[10px] font-bold text-sidebar-foreground/40 uppercase tracking-widest">
-                {section.title}
-              </div>
-              <div className="space-y-0.5">
-                {section.items.map((item, iIdx) => {
-                  const active = pathname === item.href || (item.href !== '/' && item.href !== '/admin' && pathname.startsWith(item.href)) || (item.href === '/admin' && pathname === '/admin');
-                  const Icon = item.icon;
-                  return (
-                    <Link
-                      key={iIdx}
-                      href={item.href}
-                      className={cn(
-                        'group flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200',
-                        active
-                          ? 'bg-primary/15 text-sidebar-foreground border-l-2 border-primary'
-                          : 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/5',
-                      )}
-                    >
-                      <Icon className={cn('w-4 h-4 shrink-0', active ? 'text-primary' : 'text-sidebar-foreground/40 group-hover:text-sidebar-foreground')} />
-                      <span className="truncate">{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+      {/* ── Desktop sidebar (md+) ── */}
+      <aside className="hidden md:flex flex-col fixed inset-y-0 left-0 w-64 z-40 border-r"
+        style={{ background: 'hsl(var(--sidebar))', borderColor: 'hsl(var(--sidebar-border))' }}
+      >
+        {/* Logo */}
+        <div className="flex items-center gap-3 h-16 px-5 border-b" style={{ borderColor: 'hsl(var(--sidebar-border))' }}>
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, #4ADE80, #22C55E)', boxShadow: '0 0 16px rgba(74,222,128,0.4)' }}>
+            <span className="text-lg">🎵</span>
+          </div>
+          <span className="font-bold text-lg tracking-tight" style={{ fontFamily: 'var(--font-display)', color: 'hsl(var(--sidebar-foreground))' }}>
+            Maestro
+          </span>
+          {staff && (
+            <Link href={isAdminView ? '/' : '/admin'} className="ml-auto text-xs px-2 py-1 rounded-lg transition-colors"
+              style={{ background: 'rgba(74,222,128,0.15)', color: '#4ADE80' }}>
+              {isAdminView ? 'Choriste' : 'Direction'}
+            </Link>
+          )}
         </div>
 
-        {/* Carte identité pupitre + déconnexion */}
-        <div className="p-3 border-t border-sidebar-border space-y-2">
-          <div className="rounded-2xl bg-sidebar-foreground/5 border border-sidebar-border p-3.5">
-            <div className="text-[11px] font-bold text-sidebar-foreground mb-0.5 truncate">
-              {userProfile?.display_name || 'Membre'}
+        {/* Nav sections */}
+        <nav className="flex-1 px-3 py-4 overflow-y-auto no-scrollbar space-y-6">
+          {sections.map((section) => (
+            <div key={section.title}>
+              <p className="px-3 mb-2 text-xs font-semibold tracking-widest uppercase"
+                style={{ color: 'rgba(255,255,255,0.3)' }}>
+                {section.title}
+              </p>
+              <ul className="space-y-1">
+                {section.items.map((item) => {
+                  const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+                  return (
+                    <li key={item.href}>
+                      <Link href={item.href}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
+                        style={{
+                          color: active ? '#4ADE80' : 'rgba(255,255,255,0.65)',
+                          background: active ? 'rgba(74,222,128,0.12)' : 'transparent',
+                          borderLeft: active ? '2px solid #4ADE80' : '2px solid transparent',
+                        }}
+                      >
+                        <item.icon className="w-4 h-4 shrink-0" />
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
-            <div className="text-[10px] text-sidebar-foreground/50 leading-relaxed">
-              {ROLE_LABELS[role]}
-              {userProfile?.instrument ? (
-                ` · ${
-                  ({
-                    piano: 'Piano / Clavier',
-                    guitare: 'Guitare',
-                    basse: 'Basse',
-                    batterie: 'Batterie',
-                    cuivres: 'Vents / Cuivres',
-                    autre: 'Instrumentiste'
-                  }[userProfile.instrument] || userProfile.instrument)
-                }`
-              ) : voice ? (
-                ` · Pupitre ${VOICE_LABELS[voice]}`
-              ) : (
-                ' · Voix à évaluer'
-              )}
+          ))}
+        </nav>
+
+        {/* Profile card */}
+        <div className="p-3 border-t" style={{ borderColor: 'hsl(var(--sidebar-border))' }}>
+          <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-bold"
+              style={{ background: 'linear-gradient(135deg, #4ADE80, #22C55E)', color: '#071008' }}>
+              {profile?.display_name?.[0]?.toUpperCase() ?? '?'}
             </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold truncate" style={{ color: 'hsl(var(--sidebar-foreground))' }}>
+                {profile?.display_name ?? '—'}
+              </p>
+              <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                {ROLE_LABELS[role as Role] ?? role ?? '—'}
+                {voiceLabel && ` · ${voiceLabel}`}
+              </p>
+            </div>
+            <button onClick={signOut} className="p-1.5 rounded-lg transition-colors" title="Se déconnecter"
+              style={{ color: 'rgba(255,255,255,0.35)' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#f87171')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h6a2 2 0 012 2v1" />
+              </svg>
+            </button>
           </div>
-          <button
-            onClick={() => signOut()}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive text-xs font-semibold hover:bg-destructive/20 transition-all"
-          >
-            <LogOut className="w-4 h-4" />
-            Déconnexion
-          </button>
         </div>
       </aside>
 
-      {/* Navigation mobile */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-sidebar/95 backdrop-blur-md border-t border-sidebar-border">
-        <div className="flex items-center justify-around h-16 px-2 text-sidebar-foreground">
-          <Link href="/" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5', pathname === '/' ? 'text-primary' : 'text-sidebar-foreground/55')}>
-            <Home className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">Accueil</span>
-          </Link>
-          <Link href="/cantiques" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5', pathname.startsWith('/cantiques') ? 'text-primary' : 'text-sidebar-foreground/55')}>
-            <Music className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">Cantiques</span>
-          </Link>
-          <Link href="/calendrier" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5', pathname.startsWith('/calendrier') ? 'text-primary' : 'text-sidebar-foreground/55')}>
-            <CalendarDays className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">Calendrier</span>
-          </Link>
-          <Link href="/repetitions" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5', pathname.startsWith('/repetitions') ? 'text-primary' : 'text-sidebar-foreground/55')}>
-            <MicVocal className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">Répétitions</span>
-          </Link>
-          <Link href="/profil" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5', pathname.startsWith('/profil') ? 'text-primary' : 'text-sidebar-foreground/55')}>
-            <User className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">Profil</span>
-          </Link>
-        </div>
-      </nav>
+      {/* ── Mobile Bottom Nav (< md) ── */}
+      <BottomNav />
     </>
+  );
+}
+
+/* ─── Mobile Bottom Navigation ───────────────────────────── */
+function BottomNav() {
+  const pathname = usePathname();
+
+  return (
+    <nav
+      className="md:hidden fixed bottom-0 inset-x-0 z-50 glass-nav flex items-center justify-around"
+      style={{
+        height: 'calc(3.75rem + env(safe-area-inset-bottom))',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+    >
+      {BOTTOM_NAV.map((item) => {
+        const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="flex flex-col items-center gap-0.5 px-3 py-2 transition-all duration-200 active:scale-90"
+          >
+            <div
+              className="w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-200"
+              style={{
+                background: active ? 'rgba(74,222,128,0.18)' : 'transparent',
+                boxShadow: active ? '0 0 16px rgba(74,222,128,0.2)' : 'none',
+              }}
+            >
+              <item.icon
+                className="w-5 h-5 transition-all duration-200"
+                style={{ color: active ? '#4ADE80' : 'rgba(255,255,255,0.4)' }}
+              />
+            </div>
+            <span
+              className="text-[10px] font-semibold transition-colors duration-200"
+              style={{ color: active ? '#4ADE80' : 'rgba(255,255,255,0.35)' }}
+            >
+              {item.label}
+            </span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
