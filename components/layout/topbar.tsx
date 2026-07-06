@@ -1,135 +1,148 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Moon, Sun, LogOut, Search, Bell, HelpCircle, MessageSquare } from 'lucide-react';
-import { supabase, type UserStats } from '@/lib/supabase';
+import { Moon, Sun, LogOut, Bell, Music, Flame } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/hooks/use-auth';
-import { useLang } from '@/hooks/use-lang';
 import Link from 'next/link';
+import type { ChoirStats, Announcement } from '@/lib/types';
+import { VOICE_LABELS, ROLE_LABELS, type Role, type VoicePart } from '@/lib/types';
 
 export function TopBar() {
-  const [stats, setStats] = useState<UserStats | null>(null);
+  const [stats, setStats] = useState<ChoirStats | null>(null);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const { theme, toggle } = useTheme();
-  const { user, signOut } = useAuth();
-  const { lang, setLang } = useLang();
+  const { user, userProfile, signOut } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
-    supabase.from('user_stats').select('*').limit(1).maybeSingle().then(({ data }) => setStats(data));
-  }, []);
+    if (!user) return;
+    supabase.from('choir_stats').select('*').eq('user_id', user.id).maybeSingle()
+      .then(({ data }) => setStats(data));
+    supabase.from('announcements').select('*').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(5)
+      .then(({ data }) => setAnnouncements(data || []));
+  }, [user]);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target.closest('#topbar-dropdown')) setDropdownOpen(false);
+      if (!target.closest('#topbar-notif')) setNotifOpen(false);
     };
-    if (dropdownOpen) document.addEventListener('mousedown', handler);
+    if (dropdownOpen || notifOpen) document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [dropdownOpen]);
+  }, [dropdownOpen, notifOpen]);
 
-  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Chanteur';
+  const userName = userProfile?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Membre';
   const userInitial = userName.charAt(0).toUpperCase();
+  const voice = userProfile?.voice_part as VoicePart | null;
+  const role = (userProfile?.role || 'choriste') as Role;
 
   return (
-    <header className="sticky top-0 z-40 h-16 bg-[#3490dc] border-b border-blue-600/30 text-white w-full">
+    <header className="sticky top-0 z-40 h-16 bg-sidebar border-b border-sidebar-border text-sidebar-foreground w-full">
       <div className="h-full px-4 md:px-6 flex items-center justify-between gap-4">
-        {/* Left: Brand logo */}
-        <div className="flex items-center gap-3">
-          <div className="grid place-items-center w-9 h-9 rounded-xl bg-white/20 shadow-lg">
-            <span className="text-lg font-bold text-white">M</span>
+        {/* Marque */}
+        <Link href="/" className="flex items-center gap-3">
+          <div className="grid place-items-center w-9 h-9 rounded-xl bg-primary text-primary-foreground shadow-lg">
+            <Music className="w-4 h-4" />
           </div>
-          <span className="font-display font-bold text-lg tracking-tight text-white">Maestro Studio</span>
-        </div>
+          <div className="hidden sm:block">
+            <span className="font-display font-bold text-base tracking-tight">Chorale</span>
+            <span className="block text-[9px] text-sidebar-foreground/50 uppercase tracking-widest -mt-0.5">Gestion & Formation</span>
+          </div>
+        </Link>
 
-        {/* Center: Search input */}
-        <div className="hidden md:flex items-center flex-1 max-w-sm relative">
-          <Search className="w-4 h-4 text-white/50 absolute left-3" />
-          <input
-            type="text"
-            placeholder={lang === 'fr' ? 'Rechercher...' : 'Search...'}
-            className="w-full bg-white/15 border border-white/20 rounded-xl py-1.5 pl-10 pr-4 text-xs text-white placeholder-white/60 focus:outline-none focus:border-white/50 transition-all"
-          />
-        </div>
-
-        {/* Right: Links + Language + User */}
+        {/* Droite : streak, notifications, profil */}
         <div className="flex items-center gap-3 text-sm font-semibold">
-          <Link href="/communaute/forum" className="hidden sm:inline-flex items-center gap-1.5 text-white/70 hover:text-white transition-colors text-xs">
-            <MessageSquare className="w-3.5 h-3.5" /> {lang === 'fr' ? 'Forum' : 'Forum'}
-          </Link>
-          <Link href="/communaute/aide" className="hidden sm:inline-flex items-center gap-1.5 text-white/70 hover:text-white transition-colors text-xs">
-            <HelpCircle className="w-3.5 h-3.5" /> {lang === 'fr' ? 'Aide' : 'Help'}
-          </Link>
+          {stats && (
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sidebar-foreground/10 border border-sidebar-border text-xs">
+              <Flame className="w-3.5 h-3.5 text-accent" />
+              <span>{stats.streak_weeks} sem.</span>
+              <span className="text-sidebar-foreground/40">·</span>
+              <span className="text-primary">{stats.total_xp} XP</span>
+            </div>
+          )}
 
-          {/* Language toggle */}
-          <button
-            onClick={() => setLang(lang === 'fr' ? 'en' : 'fr')}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/15 border border-white/20 text-xs font-bold text-white hover:bg-white/25 transition-all"
-            title={lang === 'fr' ? 'Switch to English' : 'Passer en Français'}
-          >
-            <span className="text-base leading-none">{lang === 'fr' ? '🇫🇷' : '🇬🇧'}</span>
-            <span>{lang === 'fr' ? 'FR' : 'EN'}</span>
-          </button>
-
-          {/* Notification bell */}
-          <button className="relative p-1 text-white/70 hover:text-white transition-colors" aria-label="Notifications">
-            <Bell className="w-4 h-4" />
-            <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-yellow-400 rounded-full" />
-          </button>
-
-          {/* User profile dropdown */}
-          <div className="relative" id="topbar-dropdown">
+          {/* Notifications / annonces */}
+          <div className="relative" id="topbar-notif">
             <button
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex items-center gap-2 focus:outline-none"
+              onClick={() => setNotifOpen(!notifOpen)}
+              className="relative p-1.5 text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors"
+              aria-label="Annonces"
             >
-              <div className="w-8 h-8 rounded-full bg-white/20 border-2 border-white/40 grid place-items-center font-bold text-white text-xs hover:border-white transition-all">
+              <Bell className="w-4 h-4" />
+              {announcements.some(a => a.pinned) && (
+                <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-accent rounded-full" />
+              )}
+            </button>
+            {notifOpen && (
+              <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-popover border border-border shadow-2xl p-2 animate-scale-in text-popover-foreground">
+                <div className="px-3 py-2 border-b border-border text-xs font-bold">Annonces</div>
+                {announcements.length === 0 ? (
+                  <div className="px-3 py-4 text-xs text-muted-foreground text-center">Aucune annonce pour le moment</div>
+                ) : (
+                  <div className="max-h-72 overflow-y-auto">
+                    {announcements.map(a => (
+                      <div key={a.id} className="px-3 py-2.5 border-b border-border/50 last:border-0">
+                        <div className="text-xs font-bold flex items-center gap-1.5">
+                          {a.pinned && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />}
+                          {a.title}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{a.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Profil */}
+          <div className="relative" id="topbar-dropdown">
+            <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center gap-2 focus:outline-none">
+              <div className="w-8 h-8 rounded-full bg-primary/20 border-2 border-primary/40 grid place-items-center font-bold text-xs hover:border-primary transition-all">
                 {userInitial}
               </div>
             </button>
 
             {dropdownOpen && (
-              <div className="absolute right-0 mt-2 w-52 rounded-2xl bg-white border border-gray-200 shadow-2xl p-2 animate-scale-in text-gray-800">
-                <div className="px-3 py-2 border-b border-gray-100">
-                  <div className="font-bold text-xs text-gray-800 capitalize">{userName}</div>
-                  <div className="text-[9px] text-gray-400 truncate mt-0.5">{user?.email}</div>
-                </div>
-                {stats && (
-                  <div className="px-3 py-2 border-b border-gray-100 space-y-1 text-[11px] text-gray-500">
-                    <div className="flex justify-between">
-                      <span>{lang === 'fr' ? 'Niveau' : 'Level'} :</span>
-                      <span className="font-bold text-blue-500">{stats.level}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>XP {lang === 'fr' ? 'Totaux' : 'Total'} :</span>
-                      <span className="font-bold text-green-500">{stats.total_xp}</span>
-                    </div>
+              <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-popover border border-border shadow-2xl p-2 animate-scale-in text-popover-foreground">
+                <div className="px-3 py-2 border-b border-border">
+                  <div className="font-bold text-xs capitalize">{userName}</div>
+                  <div className="text-[9px] text-muted-foreground truncate mt-0.5">{user?.email}</div>
+                  <div className="text-[10px] text-primary font-semibold mt-1">
+                    {ROLE_LABELS[role]}{voice ? ` · ${VOICE_LABELS[voice]}` : ''}
                   </div>
-                )}
+                </div>
+                <Link
+                  href="/profil"
+                  onClick={() => setDropdownOpen(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors"
+                >
+                  Mon profil
+                </Link>
                 <Link
                   href="/account"
                   onClick={() => setDropdownOpen(false)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors"
                 >
-                  {lang === 'fr' ? '⚙️ Mon compte' : '⚙️ My account'}
+                  Paramètres
                 </Link>
                 <button
                   onClick={toggle}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors"
                 >
                   {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-                  {theme === 'dark' 
-                    ? (lang === 'fr' ? 'Thème Clair' : 'Light Theme')
-                    : (lang === 'fr' ? 'Thème Sombre' : 'Dark Theme')
-                  }
+                  {theme === 'dark' ? 'Thème clair' : 'Thème sombre'}
                 </button>
                 <button
                   onClick={() => signOut()}
                   className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-destructive hover:bg-destructive/10 rounded-xl transition-colors"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  {lang === 'fr' ? 'Se déconnecter' : 'Sign out'}
+                  Se déconnecter
                 </button>
               </div>
             )}

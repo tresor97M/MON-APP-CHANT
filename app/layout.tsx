@@ -1,6 +1,6 @@
 import './globals.css';
-import type { Metadata } from 'next';
-import { Inter, Sora } from 'next/font/google';
+import type { Metadata, Viewport } from 'next';
+import { Inter, Outfit } from 'next/font/google';
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as Sonner } from '@/components/ui/sonner';
 import { ThemeProvider } from '@/hooks/use-theme';
@@ -8,21 +8,46 @@ import { AuthProvider } from '@/hooks/use-auth';
 import { LangProvider } from '@/hooks/use-lang';
 
 const sans = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
-const display = Sora({ subsets: ['latin'], variable: '--font-display', weight: ['400', '500', '600', '700'], display: 'swap' });
+const display = Outfit({ subsets: ['latin'], variable: '--font-display', weight: ['400', '500', '600', '700', '800'], display: 'swap' });
 
 export const metadata: Metadata = {
-  title: "Maestro Studio — L'Art du Chant par l'IA",
-  description: 'Libère ta voix. Entraîne-toi au chant avec un coach IA personnalisé. Écoute, analyse, justesse et technique vocale.',
-  applicationName: 'Maestro Studio',
-  authors: [{ name: 'Maestro Studio' }],
-  keywords: ['chant', 'musique', 'coach vocal', 'IA', 'justesse', 'respiration', 'vocalises'],
+  title: 'Maestro — Chorale & Formation',
+  description:
+    'Gérez votre chorale, apprenez vos partitions et progressez avec votre Coach IA musical. Répétitions, cantiques, formation continue.',
+  applicationName: 'Maestro',
+  authors: [{ name: 'Maestro' }],
+  keywords: ['chorale', 'cantiques', 'répertoire', 'répétitions', 'pupitre', 'soprano', 'alto', 'ténor', 'basse', 'coach IA', 'formation musicale'],
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Maestro',
+  },
+  formatDetection: { telephone: false },
+  openGraph: {
+    type: 'website',
+    siteName: 'Maestro',
+    title: 'Maestro — Chorale & Formation',
+    description: 'Gérez votre chorale et progressez avec votre Coach IA musical.',
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#0A1510',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr" suppressHydrationWarning>
+    <html lang="fr" suppressHydrationWarning className="bg-background">
       <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="apple-touch-icon" href="/icons/icon-512.png" />
+        <link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192" />
+        <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className={`${sans.variable} ${display.variable} font-sans antialiased`}>
         <LangProvider>
@@ -38,3 +63,4 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
+

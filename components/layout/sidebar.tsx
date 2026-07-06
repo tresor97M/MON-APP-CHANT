@@ -2,193 +2,226 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Compass, Trophy, User, Mail, Settings, Brain, Video, Award, MessageSquare, HelpCircle, BarChart2, BookOpen, Edit2, LogOut } from 'lucide-react';
+import {
+  Home, Music, CalendarDays, Trophy, Settings,
+  GraduationCap, Sparkles, LayoutDashboard,
+  BookOpenCheck, Stethoscope, ShieldCheck, Users, ClipboardCheck, Megaphone, Table2, User,
+} from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
-import { useLang } from '@/hooks/use-lang';
+import { isStaff } from '@/lib/permissions';
+import { VOICE_LABELS, ROLE_LABELS, type Role, type VoicePart } from '@/lib/types';
 
-type NavItem = {
-  href: string;
-  label: string;
-  icon: any;
-  badge?: string;
-  badgeColor?: string;
-};
+/* ─── Bottom Nav items (mobile, max 5) ──────────────────── */
+const BOTTOM_NAV = [
+  { href: '/',             label: 'Accueil',    icon: Home },
+  { href: '/cantiques',    label: 'Cantiques',  icon: Music },
+  { href: '/repetitions',  label: 'Répétitions', icon: CalendarDays },
+  { href: '/coach',        label: 'Coach IA',   icon: Sparkles },
+  { href: '/account',      label: 'Profil',     icon: User },
+];
 
-type NavSection = {
-  title: string;
-  items: NavItem[];
-  adminOnly?: boolean;
-};
+/* ─── Desktop sidebar sections (unchanged logic) ─────────── */
+type NavItem  = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; };
+type NavSection = { title: string; items: NavItem[]; };
 
-const getSections = (userProfile: any, isAdminView: boolean, lang: string): NavSection[] => {
-  const isAdmin = userProfile?.role === 'admin' || userProfile?.role === 'super_admin';
-  const isSuper = userProfile?.role === 'super_admin';
+function getSections(role: string | undefined, isAdminView: boolean): NavSection[] {
+  const staff = isStaff(role);
 
-  if (isAdminView && isAdmin) {
-    // Version Espace Admin complète (conforme à "INSTRUCTOR PAGES")
+  if (isAdminView && staff) {
     return [
       {
-        title: 'APPLICATIONS',
+        title: 'ESPACES',
         items: [
-          { href: '/', label: lang === 'fr' ? 'Espace Élève' : 'Student Space', icon: Home },
-          { href: '/admin', label: lang === 'fr' ? 'Espace Admin' : 'Admin Space', icon: User }
-        ]
+          { href: '/', label: 'Espace Choriste', icon: Home },
+          { href: '/admin', label: 'Espace Direction', icon: LayoutDashboard },
+        ],
       },
       {
-        title: lang === 'fr' ? 'COMPTE' : 'ACCOUNT',
+        title: 'DIRECTION',
         items: [
-          { href: '/account', label: lang === 'fr' ? 'Mon Compte' : 'My Account', icon: Settings },
-          { href: '/messages', label: lang === 'fr' ? 'Mes Messages' : 'My Messages', icon: Mail }
-        ]
+          { href: '/admin', label: 'Tableau de bord', icon: LayoutDashboard },
+          { href: '/admin/repertoire', label: 'Répertoire', icon: Table2 },
+          { href: '/admin/members', label: 'Membres', icon: Users },
+          { href: '/admin/rehearsals', label: 'Répétitions', icon: CalendarDays },
+          { href: '/admin/attendance', label: 'Pointage', icon: ClipboardCheck },
+          { href: '/admin/announcements', label: 'Annonces', icon: Megaphone },
+          { href: '/admin/diagnoses', label: 'Diagnostics', icon: Stethoscope },
+          { href: '/admin/training', label: 'Formations', icon: GraduationCap },
+          ...(role === 'super_admin' ? [{ href: '/admin/roles', label: 'Rôles', icon: ShieldCheck }] : []),
+        ],
       },
-      {
-        title: lang === 'fr' ? 'ADMINISTRATEUR' : 'INSTRUCTOR',
-        items: [
-          { href: '/admin/cours', label: lang === 'fr' ? 'Gérer les cours' : 'Course Manager', icon: BookOpen },
-          { href: '/admin/quiz', label: lang === 'fr' ? 'Gérer les quiz' : 'Quiz Manager', icon: Brain },
-          { href: '/admin/earnings', label: lang === 'fr' ? 'Gains' : 'Earnings', icon: BarChart2 },
-          { href: '/admin/statement', label: lang === 'fr' ? 'Rapports' : 'Statement', icon: Award },
-          { href: '/communaute/forum', label: lang === 'fr' ? 'Forum de discussion' : 'Community', icon: MessageSquare },
-          { href: '/communaute/aide', label: lang === 'fr' ? 'Centre d\'aide' : 'Help Center', icon: HelpCircle },
-          ...(isSuper ? [{ href: '/admin/acces', label: lang === 'fr' ? 'Gestion Accès' : 'Access Manager', icon: Settings }] : []),
-        ]
-      }
     ];
   }
 
-  // Version Espace Élève standard
   return [
     {
-      title: 'APPLICATIONS',
+      title: 'CHORALE',
       items: [
-        { href: '/', label: lang === 'fr' ? 'Espace Élève' : 'Student Space', icon: Home },
-        ...(isAdmin ? [{ href: '/admin', label: lang === 'fr' ? 'Espace Admin' : 'Admin Space', icon: User }] : [])
-      ]
+        { href: '/', label: 'Accueil', icon: Home },
+        { href: '/hymns', label: 'Cantiques', icon: Music },
+        { href: '/rehearsals', label: 'Répétitions', icon: CalendarDays },
+        { href: '/training', label: 'Formation', icon: GraduationCap },
+        { href: '/progress', label: 'Progrès', icon: Trophy },
+        { href: '/coach', label: 'Coach IA (Bêta)', icon: Sparkles },
+        { href: '/notes', label: 'Mes Partitions', icon: BookOpenCheck },
+      ],
     },
     {
-      title: lang === 'fr' ? 'COMPTE' : 'ACCOUNT',
+      title: 'COMPTE',
       items: [
-        { href: '/account', label: lang === 'fr' ? 'Mon Compte' : 'My Account', icon: Settings },
-        { href: '/messages', label: lang === 'fr' ? 'Mes Messages' : 'My Messages', icon: Mail }
-      ]
+        { href: '/account', label: 'Mon Profil', icon: Settings },
+      ],
     },
-    {
-      title: lang === 'fr' ? 'ÉLÈVE' : 'STUDENT',
-      items: [
-        { href: '/parcours', label: lang === 'fr' ? 'Parcourir les cours' : 'Browse Courses', icon: Compass },
-        { href: '/lecon/1', label: lang === 'fr' ? 'Suivre une leçon' : 'Take Course', icon: Video },
-        { href: '/lecon/1', label: lang === 'fr' ? 'Faire un quiz' : 'Take Quiz', icon: Brain },
-        { href: '/profil', label: lang === 'fr' ? 'Résultats des quiz' : 'Quiz Results', icon: Award },
-        { href: '/parcours', label: lang === 'fr' ? 'Mes cours' : 'My Courses', icon: Compass, badge: 'PRO', badgeColor: 'bg-primary text-primary-foreground' },
-        { href: '/communaute/forum', label: lang === 'fr' ? 'Forum de discussion' : 'Forum', icon: MessageSquare },
-        { href: '/communaute/aide', label: lang === 'fr' ? 'Centre d\'aide' : 'Help Center', icon: HelpCircle },
-      ]
-    }
   ];
-};
+}
 
+/* ─── Desktop Sidebar ────────────────────────────────────── */
 export function Sidebar() {
   const pathname = usePathname();
-  const { lang } = useLang();
-  const { userProfile, signOut } = useAuth();
-  
+  const { userProfile: profile, signOut } = useAuth();
+  const role = profile?.role;
   const isAdminView = pathname.startsWith('/admin');
-  const sections = getSections(userProfile, isAdminView, lang);
+  const sections = getSections(role, isAdminView);
+  const staff = isStaff(role);
+
+  const voiceLabel =
+    profile?.instrument
+      ? profile.instrument
+      : profile?.voice_part
+        ? VOICE_LABELS[profile.voice_part as VoicePart] ?? profile.voice_part
+        : null;
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:flex-col md:w-64 md:fixed md:top-16 md:bottom-0 md:left-0 border-r border-gray-700 bg-[#2d3436] text-white">
-        <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6 no-scrollbar">
-          {sections.map((section, sIdx) => (
-            <div key={sIdx} className="space-y-1.5">
-              {/* Section Header */}
-              <div className="px-3 text-[10px] font-bold text-white/40 uppercase tracking-widest">
-                {section.title}
-              </div>
-
-              {/* Section Items */}
-              <div className="space-y-0.5">
-                {section.items.map((item, iIdx) => {
-                  const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
-                  const Icon = item.icon;
-                  return (
-                    <Link
-                      key={iIdx}
-                      href={item.href}
-                      className={cn(
-                        'group flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200',
-                        active
-                          ? 'bg-gradient-to-r from-primary/30 to-secondary/10 text-white border-l-2 border-primary shadow-sm shadow-primary/5'
-                          : 'text-white/60 hover:text-white hover:bg-white/5'
-                      )}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Icon className={cn('w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110', active ? 'text-primary' : 'text-white/40 group-hover:text-white')} />
-                        <span className="truncate">{item.label}</span>
-                      </div>
-                      {item.badge && (
-                        <span className={cn('text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 scale-90', item.badgeColor)}>
-                          {item.badge}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+      {/* ── Desktop sidebar (md+) ── */}
+      <aside className="hidden md:flex flex-col fixed inset-y-0 left-0 w-64 z-40 border-r"
+        style={{ background: 'hsl(var(--sidebar))', borderColor: 'hsl(var(--sidebar-border))' }}
+      >
+        {/* Logo */}
+        <div className="flex items-center gap-3 h-16 px-5 border-b" style={{ borderColor: 'hsl(var(--sidebar-border))' }}>
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, #4ADE80, #22C55E)', boxShadow: '0 0 16px rgba(74,222,128,0.4)' }}>
+            <span className="text-lg">🎵</span>
+          </div>
+          <span className="font-bold text-lg tracking-tight" style={{ fontFamily: 'var(--font-display)', color: 'hsl(var(--sidebar-foreground))' }}>
+            Maestro
+          </span>
+          {staff && (
+            <Link href={isAdminView ? '/' : '/admin'} className="ml-auto text-xs px-2 py-1 rounded-lg transition-colors"
+              style={{ background: 'rgba(74,222,128,0.15)', color: '#4ADE80' }}>
+              {isAdminView ? 'Choriste' : 'Direction'}
+            </Link>
+          )}
         </div>
 
-        {/* Bottom area */}
-        <div className="p-3 border-t border-primary/10 space-y-2">
-          {isAdminView ? (
-            <button 
-              onClick={() => signOut()}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-semibold hover:bg-red-500/20 transition-all shadow-md"
-            >
-              <LogOut className="w-4 h-4" />
-              {lang === 'fr' ? 'Déconnexion' : 'Log Out'}
-            </button>
-          ) : (
-            <div className="rounded-2xl bg-gradient-to-br from-primary/20 via-secondary/10 to-transparent border border-primary/20 p-3.5 relative overflow-hidden">
-              <div className="absolute -right-6 -bottom-6 w-16 h-16 bg-primary/10 rounded-full blur-xl" />
-              <div className="text-[11px] font-bold text-white mb-0.5 relative z-10">
-                {lang === 'fr' ? 'Passe Premium' : 'Upgrade to Premium'}
-              </div>
-              <div className="text-[10px] text-white/50 leading-relaxed mb-2.5 relative z-10">
-                {lang === 'fr' ? 'Analyse vocale et leçons illimitées.' : 'Unlock real-time feedback & extra levels.'}
-              </div>
-              <button className="w-full text-[10px] font-bold bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-lg py-1.5 hover:opacity-90 transition-opacity relative z-10 shadow-md shadow-primary/10">
-                {lang === 'fr' ? 'Découvrir' : 'Discover'}
-              </button>
+        {/* Nav sections */}
+        <nav className="flex-1 px-3 py-4 overflow-y-auto no-scrollbar space-y-6">
+          {sections.map((section) => (
+            <div key={section.title}>
+              <p className="px-3 mb-2 text-xs font-semibold tracking-widest uppercase"
+                style={{ color: 'rgba(255,255,255,0.3)' }}>
+                {section.title}
+              </p>
+              <ul className="space-y-1">
+                {section.items.map((item) => {
+                  const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+                  return (
+                    <li key={item.href}>
+                      <Link href={item.href}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
+                        style={{
+                          color: active ? '#4ADE80' : 'rgba(255,255,255,0.65)',
+                          background: active ? 'rgba(74,222,128,0.12)' : 'transparent',
+                          borderLeft: active ? '2px solid #4ADE80' : '2px solid transparent',
+                        }}
+                      >
+                        <item.icon className="w-4 h-4 shrink-0" />
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
-          )}
+          ))}
+        </nav>
+
+        {/* Profile card */}
+        <div className="p-3 border-t" style={{ borderColor: 'hsl(var(--sidebar-border))' }}>
+          <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-bold"
+              style={{ background: 'linear-gradient(135deg, #4ADE80, #22C55E)', color: '#071008' }}>
+              {profile?.display_name?.[0]?.toUpperCase() ?? '?'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold truncate" style={{ color: 'hsl(var(--sidebar-foreground))' }}>
+                {profile?.display_name ?? '—'}
+              </p>
+              <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                {ROLE_LABELS[role as Role] ?? role ?? '—'}
+                {voiceLabel && ` · ${voiceLabel}`}
+              </p>
+            </div>
+            <button onClick={signOut} className="p-1.5 rounded-lg transition-colors" title="Se déconnecter"
+              style={{ color: 'rgba(255,255,255,0.35)' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#f87171')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h6a2 2 0 012 2v1" />
+              </svg>
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-[#2d3436]/95 backdrop-blur-md border-t border-gray-700">
-        <div className="flex items-center justify-around h-16 px-2 text-white">
-          <Link href="/" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5 text-xs', pathname === '/' ? 'text-primary' : 'text-white/55')}>
-            <Home className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">{lang === 'fr' ? 'Accueil' : 'Home'}</span>
-          </Link>
-          <Link href="/parcours" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5 text-xs', pathname === '/parcours' ? 'text-primary' : 'text-white/55')}>
-            <Compass className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">{lang === 'fr' ? 'Parcours' : 'Browse'}</span>
-          </Link>
-          <Link href="/ligue" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5 text-xs', pathname === '/ligue' ? 'text-primary' : 'text-white/55')}>
-            <Trophy className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">{lang === 'fr' ? 'Ligue' : 'League'}</span>
-          </Link>
-          <Link href="/profil" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5 text-xs', pathname === '/profil' ? 'text-primary' : 'text-white/55')}>
-            <User className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">{lang === 'fr' ? 'Profil' : 'Profile'}</span>
-          </Link>
-        </div>
-      </nav>
+      {/* ── Mobile Bottom Nav (< md) ── */}
+      <BottomNav />
     </>
+  );
+}
+
+/* ─── Mobile Bottom Navigation ───────────────────────────── */
+function BottomNav() {
+  const pathname = usePathname();
+
+  return (
+    <nav
+      className="md:hidden fixed bottom-0 inset-x-0 z-50 glass-nav flex items-center justify-around"
+      style={{
+        height: 'calc(3.75rem + env(safe-area-inset-bottom))',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+    >
+      {BOTTOM_NAV.map((item) => {
+        const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="flex flex-col items-center gap-0.5 px-3 py-2 transition-all duration-200 active:scale-90"
+          >
+            <div
+              className="w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-200"
+              style={{
+                background: active ? 'rgba(74,222,128,0.18)' : 'transparent',
+                boxShadow: active ? '0 0 16px rgba(74,222,128,0.2)' : 'none',
+              }}
+            >
+              <item.icon
+                className="w-5 h-5 transition-all duration-200"
+                style={{ color: active ? '#4ADE80' : 'rgba(255,255,255,0.4)' }}
+              />
+            </div>
+            <span
+              className="text-[10px] font-semibold transition-colors duration-200"
+              style={{ color: active ? '#4ADE80' : 'rgba(255,255,255,0.35)' }}
+            >
+              {item.label}
+            </span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
