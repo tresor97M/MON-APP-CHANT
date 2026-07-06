@@ -14,11 +14,11 @@ import { VOICE_LABELS, ROLE_LABELS, type Role, type VoicePart } from '@/lib/type
 
 /* ─── Bottom Nav items (mobile, max 5) ──────────────────── */
 const BOTTOM_NAV = [
-  { href: '/',           label: 'Accueil',   icon: Home },
-  { href: '/hymns',      label: 'Cantiques', icon: Music },
-  { href: '/rehearsals', label: 'Répétitions', icon: CalendarDays },
-  { href: '/coach',      label: 'Coach IA',  icon: Sparkles },
-  { href: '/account',    label: 'Profil',    icon: User },
+  { href: '/',             label: 'Accueil',    icon: Home },
+  { href: '/cantiques',    label: 'Cantiques',  icon: Music },
+  { href: '/repetitions',  label: 'Répétitions', icon: CalendarDays },
+  { href: '/coach',        label: 'Coach IA',   icon: Sparkles },
+  { href: '/account',      label: 'Profil',     icon: User },
 ];
 
 /* ─── Desktop sidebar sections (unchanged logic) ─────────── */

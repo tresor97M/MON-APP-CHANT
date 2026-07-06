@@ -58,10 +58,10 @@ const INSTRUMENT_LABELS: Record<string, string> = {
 };
 
 const QUICK_ACTIONS = [
-  { href: '/hymns',      label: 'Cantiques',    icon: Music,        color: '#4ADE80', bg: 'rgba(74,222,128,0.12)'   },
-  { href: '/rehearsals', label: 'Répétitions',  icon: CalendarDays, color: '#60A5FA', bg: 'rgba(96,165,250,0.12)'  },
-  { href: '/coach',      label: 'Coach IA',     icon: Sparkles,     color: '#F59E0B', bg: 'rgba(245,158,11,0.12)'  },
-  { href: '/training',   label: 'Formation',    icon: GraduationCap,color: '#C084FC', bg: 'rgba(192,132,252,0.12)' },
+  { href: '/cantiques',    label: 'Cantiques',    icon: Music,        color: '#4ADE80', bg: 'rgba(74,222,128,0.12)'   },
+  { href: '/repetitions',  label: 'Répétitions',  icon: CalendarDays, color: '#60A5FA', bg: 'rgba(96,165,250,0.12)'  },
+  { href: '/coach',        label: 'Coach IA',     icon: Sparkles,     color: '#F59E0B', bg: 'rgba(245,158,11,0.12)'  },
+  { href: '/formation',    label: 'Formation',    icon: GraduationCap,color: '#C084FC', bg: 'rgba(192,132,252,0.12)' },
 ];
 
 export default function HomePage() {
@@ -313,7 +313,7 @@ export default function HomePage() {
             <h2 className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.35)' }}>
               En apprentissage
             </h2>
-            <Link href="/hymns" className="text-xs font-medium flex items-center gap-0.5" style={{ color: '#4ADE80' }}>
+            <Link href="/cantiques" className="text-xs font-medium flex items-center gap-0.5" style={{ color: '#4ADE80' }}>
               Voir tout <ChevronRight size={12} />
             </Link>
           </div>
@@ -321,7 +321,7 @@ export default function HomePage() {
             {hymns.filter(h => h.learning_status === 'en_apprentissage').slice(0, 3).map((hymn) => (
               <Link
                 key={hymn.id}
-                href={`/hymns/${hymn.id}`}
+                href={`/cantiques/${hymn.id}`}
                 className="flex items-center gap-3 p-3.5 rounded-2xl transition-all duration-200 active:scale-98"
                 style={{ background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.1)' }}
               >
