@@ -10,8 +10,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import {
-  VOICE_LABELS, HYMN_STATUS_LABELS, EVENT_TYPE_LABELS,
-  type Hymn, type Rehearsal, type RepertoireEvent, type RehearsalRsvp,
+  VOICE_LABELS, LEARNING_STATUS_LABELS, OCCASION_LABELS,
+  type Hymn, type Rehearsal, type HymnScheduleEntry, type RehearsalRsvp,
   type TrainingAssignment, type SkillGap,
 } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
@@ -26,7 +26,7 @@ function fmtDate(d: string) {
 export default function HomePage() {
   const { user, userProfile: profile } = useAuth();
   const [hymns, setHymns] = useState<Hymn[]>([]);
-  const [events, setEvents] = useState<RepertoireEvent[]>([]);
+  const [events, setEvents] = useState<HymnScheduleEntry[]>([]);
   const [rehearsals, setRehearsals] = useState<Rehearsal[]>([]);
   const [rsvps, setRsvps] = useState<RehearsalRsvp[]>([]);
   const [assignments, setAssignments] = useState<TrainingAssignment[]>([]);
@@ -39,7 +39,7 @@ export default function HomePage() {
     const todayStr = new Date().toISOString().slice(0, 10);
     const [hymnRes, evtRes, rehRes, rsvpRes, assignRes, gapRes, attRes] = await Promise.all([
       supabase.from('hymns').select('*').order('updated_at', { ascending: false }).limit(6),
-      supabase.from('repertoire_events').select('*').gte('event_date', todayStr).order('event_date').limit(5),
+      supabase.from('hymn_schedule').select('*, hymns(*)').gte('scheduled_date', todayStr).order('scheduled_date').limit(5),
       supabase.from('rehearsals').select('*').gte('rehearsal_date', todayStr).neq('status', 'annulee').order('rehearsal_date').limit(3),
       supabase.from('rehearsal_rsvps').select('*').eq('user_id', user.id),
       supabase.from('training_assignments').select('*').eq('user_id', user.id).neq('status', 'termine'),
@@ -64,7 +64,7 @@ export default function HomePage() {
 
   const rsvpFor = useMemo(() => new Map(rsvps.map(r => [r.rehearsal_id, r.response])), [rsvps]);
 
-  const learningCount = hymns.filter(h => h.status === 'en_apprentissage').length;
+  const learningCount = hymns.filter(h => h.learning_status === 'en_apprentissage').length;
 
   const firstName = profile?.display_name?.split(' ')[0] || user?.email?.split('@')[0] || 'choriste';
   const voice = profile?.voice_part ? VOICE_LABELS[profile.voice_part] : null;
@@ -204,9 +204,9 @@ export default function HomePage() {
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {events.map(e => (
               <li key={e.id} className="rounded-xl border border-border p-3">
-                <Badge variant="secondary" className="text-xs mb-1.5">{EVENT_TYPE_LABELS[e.event_type] || e.event_type}</Badge>
-                <p className="font-medium text-sm truncate">{e.title}</p>
-                <p className="text-xs text-muted-foreground capitalize">{fmtDate(e.event_date)}</p>
+                <Badge variant="secondary" className="text-xs mb-1.5">{OCCASION_LABELS[e.occasion] || e.occasion}</Badge>
+                <p className="font-medium text-sm truncate">{e.hymns?.title || e.notes || 'Programme'}</p>
+                <p className="text-xs text-muted-foreground capitalize">{fmtDate(e.scheduled_date)}</p>
               </li>
             ))}
           </ul>
@@ -237,9 +237,9 @@ export default function HomePage() {
                     <p className="font-medium text-sm truncate">
                       {h.number ? `${h.number}. ` : ''}{h.title}
                     </p>
-                    <Sparkles className={cn('h-3.5 w-3.5 shrink-0', h.status === 'maitrise' || h.status === 'repertoire_actif' ? 'text-primary' : 'text-muted-foreground/40')} aria-hidden="true" />
+                    <Sparkles className={cn('h-3.5 w-3.5 shrink-0', h.learning_status === 'maitrise' || h.learning_status === 'repertoire_actif' ? 'text-primary' : 'text-muted-foreground/40')} aria-hidden="true" />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">{HYMN_STATUS_LABELS[h.status] || h.status}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{LEARNING_STATUS_LABELS[h.learning_status] || h.learning_status}</p>
                 </Link>
               </li>
             ))}
