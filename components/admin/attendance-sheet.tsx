@@ -41,7 +41,7 @@ export function AttendanceSheet({ rehearsal, markerId }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     const [memRes, rsvpRes, attRes] = await Promise.all([
-      supabase.from('user_profiles').select('*').eq('status', 'actif').order('full_name'),
+      supabase.from('user_profiles').select('*').eq('status', 'actif').order('display_name'),
       supabase.from('rehearsal_rsvps').select('*').eq('rehearsal_id', rehearsal.id),
       supabase.from('attendance').select('*').eq('rehearsal_id', rehearsal.id),
     ]);
@@ -154,7 +154,7 @@ export function AttendanceSheet({ rehearsal, markerId }: Props) {
             <li key={m.user_id} className="rounded-xl border border-border bg-card p-3 flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-sm text-foreground">{m.full_name || m.email}</span>
+                  <span className="font-semibold text-sm text-foreground">{m.display_name || m.email}</span>
                   {m.voice_part && (
                     <Badge variant="outline" className={cn('text-[10px]', VOICE_COLORS[m.voice_part as VoicePart])}>
                       {VOICE_LABELS[m.voice_part as VoicePart]}
@@ -180,7 +180,7 @@ export function AttendanceSheet({ rehearsal, markerId }: Props) {
                       key={value}
                       type="button"
                       onClick={() => mark(m.user_id, value)}
-                      aria-label={`${label} — ${m.full_name || m.email}`}
+                      aria-label={`${label} — ${m.display_name || m.email}`}
                       className={cn(
                         'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors',
                         active ? activeCls : 'bg-card text-muted-foreground border-border hover:border-foreground/40',

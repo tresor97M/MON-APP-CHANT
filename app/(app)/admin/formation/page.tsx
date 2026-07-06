@@ -40,7 +40,7 @@ export default function AdminFormationPage() {
       supabase.from('training_paths').select('*').order('created_at', { ascending: false }),
       supabase.from('training_modules').select('*').order('sort_order'),
       supabase.from('training_assignments').select('*'),
-      supabase.from('user_profiles').select('*').order('full_name'),
+      supabase.from('user_profiles').select('*').order('display_name'),
     ]);
     setPaths(pathRes.data || []);
     setModules(modRes.data || []);
@@ -120,7 +120,7 @@ export default function AdminFormationPage() {
 
   const memberName = (id: string) => {
     const m = members.find(x => x.user_id === id);
-    return m?.full_name || m?.email || 'Membre';
+    return m?.display_name || m?.email || 'Membre';
   };
 
   const inputCls =
@@ -306,7 +306,7 @@ export default function AdminFormationPage() {
                             .filter(m => !pathAssignments.some(a => a.user_id === m.user_id))
                             .map(m => (
                               <option key={m.user_id} value={m.user_id}>
-                                {m.full_name || m.email}{m.voice_part ? ` (${VOICE_LABELS[m.voice_part as VoicePart]})` : ''}
+                                {m.display_name || m.email}{m.voice_part ? ` (${VOICE_LABELS[m.voice_part as VoicePart]})` : ''}
                               </option>
                             ))}
                         </select>

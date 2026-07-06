@@ -25,7 +25,7 @@ const RSVP_OPTIONS: { value: RsvpResponse; label: string; icon: typeof CheckCirc
 ];
 
 export default function RepetitionsPage() {
-  const { user, profile } = useAuth();
+  const { user, userProfile: profile } = useAuth();
   const [rehearsals, setRehearsals] = useState<Rehearsal[]>([]);
   const [rsvps, setRsvps] = useState<Map<string, RehearsalRsvp>>(new Map());
   const [attendance, setAttendance] = useState<Attendance[]>([]);

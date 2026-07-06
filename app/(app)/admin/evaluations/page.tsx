@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-type GapWithUser = SkillGap & { user_profiles?: Pick<UserProfile, 'full_name' | 'email' | 'voice_part'> | null };
+type GapWithUser = SkillGap & { user_profiles?: Pick<UserProfile, 'display_name' | 'email' | 'voice_part'> | null };
 
 const GAP_STATUS_LABELS: Record<SkillGap['status'], string> = {
   identifiee: 'Identifiée',
@@ -41,7 +41,7 @@ export default function AdminEvaluationsPage() {
   const load = useCallback(async () => {
     const [gapRes, memRes] = await Promise.all([
       supabase.from('skill_gaps').select('*').order('created_at', { ascending: false }),
-      supabase.from('user_profiles').select('*').order('full_name'),
+      supabase.from('user_profiles').select('*').order('display_name'),
     ]);
     const allMembers = (memRes.data as UserProfile[]) || [];
     const byId = new Map(allMembers.map(m => [m.user_id, m]));
@@ -49,7 +49,7 @@ export default function AdminEvaluationsPage() {
       ...g,
       user_profiles: byId.get(g.user_id)
         ? {
-            full_name: byId.get(g.user_id)!.full_name,
+            display_name: byId.get(g.user_id)!.display_name,
             email: byId.get(g.user_id)!.email,
             voice_part: byId.get(g.user_id)!.voice_part,
           }
@@ -153,7 +153,7 @@ export default function AdminEvaluationsPage() {
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold text-sm text-foreground">
-                    {g.user_profiles?.full_name || g.user_profiles?.email || 'Membre inconnu'}
+                    {g.user_profiles?.display_name || g.user_profiles?.email || 'Membre inconnu'}
                   </span>
                   {g.user_profiles?.voice_part && (
                     <Badge variant="outline" className={cn('text-[10px]', VOICE_COLORS[g.user_profiles.voice_part as VoicePart])}>
@@ -196,7 +196,7 @@ export default function AdminEvaluationsPage() {
                 <option value="">— Choisir —</option>
                 {members.map(m => (
                   <option key={m.user_id} value={m.user_id}>
-                    {m.full_name || m.email}{m.voice_part ? ` (${VOICE_LABELS[m.voice_part as VoicePart]})` : ''}
+                    {m.display_name || m.email}{m.voice_part ? ` (${VOICE_LABELS[m.voice_part as VoicePart]})` : ''}
                   </option>
                 ))}
               </select>

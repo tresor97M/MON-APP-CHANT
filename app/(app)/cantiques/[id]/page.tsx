@@ -24,7 +24,7 @@ const PROGRESS_ORDER: HymnProgressStatus[] = ['a_apprendre', 'en_cours', 'appris
 export default function CantiqueDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { user, profile } = useAuth();
+  const { user, userProfile: profile } = useAuth();
   const [hymn, setHymn] = useState<Hymn | null>(null);
   const [files, setFiles] = useState<HymnFile[]>([]);
   const [schedule, setSchedule] = useState<HymnScheduleEntry[]>([]);

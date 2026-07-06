@@ -22,7 +22,7 @@ export default function AdminMembresPage() {
   const [voiceFilter, setVoiceFilter] = useState<VoicePart | 'all' | 'sans_voix'>('all');
 
   const load = useCallback(async () => {
-    const { data } = await supabase.from('user_profiles').select('*').order('full_name');
+    const { data } = await supabase.from('user_profiles').select('*').order('display_name');
     setMembers((data as UserProfile[]) || []);
     setLoading(false);
   }, []);
@@ -46,7 +46,7 @@ export default function AdminMembresPage() {
       if (voiceFilter === 'sans_voix' && m.voice_part) return false;
       if (voiceFilter !== 'all' && voiceFilter !== 'sans_voix' && m.voice_part !== voiceFilter) return false;
       if (!q) return true;
-      return (m.full_name || '').toLowerCase().includes(q) || (m.email || '').toLowerCase().includes(q);
+      return (m.display_name || '').toLowerCase().includes(q) || (m.email || '').toLowerCase().includes(q);
     });
   }, [members, search, voiceFilter]);
 
@@ -148,7 +148,7 @@ export default function AdminMembresPage() {
                 {filtered.map(m => (
                   <tr key={m.user_id} className="border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-foreground">{m.full_name || '—'}</p>
+                      <p className="font-semibold text-foreground">{m.display_name || '—'}</p>
                       <p className="text-xs text-muted-foreground">{m.email}</p>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
@@ -161,7 +161,7 @@ export default function AdminMembresPage() {
                         <select
                           value={m.voice_part || ''}
                           onChange={e => setVoice(m, e.target.value as VoicePart | '')}
-                          aria-label={`Voix de ${m.full_name || m.email}`}
+                          aria-label={`Voix de ${m.display_name || m.email}`}
                           className={cn(
                             'text-xs font-semibold rounded-lg border px-2 py-1 outline-none cursor-pointer bg-transparent',
                             m.voice_part ? VOICE_COLORS[m.voice_part as VoicePart] : 'border-border text-muted-foreground',
@@ -190,7 +190,7 @@ export default function AdminMembresPage() {
                       <select
                         value={m.status || 'actif'}
                         onChange={e => setStatus(m, e.target.value)}
-                        aria-label={`Statut de ${m.full_name || m.email}`}
+                        aria-label={`Statut de ${m.display_name || m.email}`}
                         className="text-xs font-semibold rounded-lg border border-border px-2 py-1 outline-none cursor-pointer bg-transparent text-foreground"
                       >
                         {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

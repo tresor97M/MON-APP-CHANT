@@ -29,6 +29,7 @@ $$;
 
 -- ---------- 1. Extension de user_profiles ----------
 alter table public.user_profiles
+  add column if not exists email text,
   add column if not exists voice_part text check (voice_part in ('soprano','alto','tenor','basse') or voice_part is null),
   add column if not exists voice_confirmed boolean not null default false,
   add column if not exists joined_choir_at timestamptz default now(),
