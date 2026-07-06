@@ -88,7 +88,11 @@ function autoCorrelate(buffer: Float32Array, sampleRate: number): number {
   }
 
   let T0 = maxpos;
-  return sampleRate / T0;
+  const hz = sampleRate / T0;
+  if (hz >= 60 && hz <= 1200) {
+    return hz;
+  }
+  return -1;
 }
 
 export default function LessonPage({ params }: { params: { id: string } }) {
@@ -113,6 +117,10 @@ export default function LessonPage({ params }: { params: { id: string } }) {
   const [detectedPitch, setDetectedPitch] = useState<number | null>(null);
   const [detectedNoteName, setDetectedNoteName] = useState<string>('');
   const [centsOff, setCentsOff] = useState<number>(0);
+  const [tolerance, setTolerance] = useState<'easy' | 'medium' | 'hard'>('medium');
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pitchHistoryRef = useRef<{ cents: number; just: boolean }[]>([]);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -204,6 +212,84 @@ export default function LessonPage({ params }: { params: { id: string } }) {
   }, [params.id]);
 
   const current = exercises[currentIdx];
+  const toleranceCents = tolerance === 'easy' ? 45 : tolerance === 'medium' ? 25 : 12;
+
+  const drawPitchCurve = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const width = canvas.width;
+    const height = canvas.height;
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#0b0f19'; 
+    ctx.fillRect(0, 0, width, height);
+
+    const centerY = height / 2;
+    ctx.beginPath();
+    ctx.strokeStyle = '#334155'; 
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([]);
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(width, centerY);
+    ctx.stroke();
+
+    const upperY = centerY - (toleranceCents / 50) * (height / 2);
+    const lowerY = centerY + (toleranceCents / 50) * (height / 2);
+
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)'; 
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.moveTo(0, upperY);
+    ctx.lineTo(width, upperY);
+    ctx.moveTo(0, lowerY);
+    ctx.lineTo(width, lowerY);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.05)';
+    ctx.fillRect(0, upperY, width, lowerY - upperY);
+
+    const history = pitchHistoryRef.current;
+    if (history.length > 1) {
+      ctx.setLineDash([]);
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      for (let i = 1; i < history.length; i++) {
+        const p1 = history[i - 1];
+        const p2 = history[i];
+
+        const clamp1 = Math.max(-50, Math.min(50, p1.cents));
+        const clamp2 = Math.max(-50, Math.min(50, p2.cents));
+
+        const y1 = centerY - (clamp1 / 50) * (height / 2);
+        const y2 = centerY - (clamp2 / 50) * (height / 2);
+
+        const x1 = ((i - 1) / 49) * width;
+        const x2 = (i / 49) * width;
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = p2.just ? '#22c55e' : '#f97316'; 
+        ctx.stroke();
+      }
+
+      const lastPoint = history[history.length - 1];
+      const clampLast = Math.max(-50, Math.min(50, lastPoint.cents));
+      const lastY = centerY - (clampLast / 50) * (height / 2);
+      const lastX = ((history.length - 1) / 49) * width;
+
+      ctx.beginPath();
+      ctx.arc(lastX, lastY, 6, 0, 2 * Math.PI);
+      ctx.fillStyle = lastPoint.just ? '#22c55e' : '#f97316';
+      ctx.fill();
+    }
+  }, [toleranceCents]);
 
   const stopSim = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -287,6 +373,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     setMaestroMsg(getMaestroMessage('listening'));
     
     audioDataRef.current = [];
+    pitchHistoryRef.current = [];
     setDetectedPitch(null);
     setDetectedNoteName('');
     setCentsOff(0);
@@ -301,7 +388,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
       
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 1024; // Augmenter fftSize pour une meilleure précision du pitch
+      analyser.fftSize = 1024; 
       source.connect(analyser);
       analyserRef.current = analyser;
 
@@ -338,15 +425,26 @@ export default function LessonPage({ params }: { params: { id: string } }) {
             const noteName = notes[noteIndex % 12] + (Math.floor(noteIndex / 12) - 1);
             setDetectedNoteName(noteName);
             
-            // Calcul de la déviation en Cents
-            const targetNotePitch = 440 * Math.pow(2, (noteIndex - 69) / 12);
-            const cents = Math.floor(1200 * Math.log(pitch / targetNotePitch) / Math.log(2));
+            // Calcul de la déviation en cents par rapport à la note cible
+            const targetHz = getExerciseTargetHz();
+            const cents = Math.round(1200 * Math.log2(pitch / targetHz));
             setCentsOff(Math.max(-50, Math.min(50, cents)));
+
+            // Enregistrer dans l'historique
+            pitchHistoryRef.current.push({ cents, just: Math.abs(cents) <= toleranceCents });
           } else {
             setDetectedPitch(null);
             setDetectedNoteName('');
             setCentsOff(0);
+            pitchHistoryRef.current.push({ cents: 0, just: false });
           }
+
+          if (pitchHistoryRef.current.length > 50) {
+            pitchHistoryRef.current.shift();
+          }
+
+          // Dessiner le Canvas
+          drawPitchCurve();
 
           setAudioLevel((prev) => {
             const next = [...prev];
@@ -638,6 +736,37 @@ export default function LessonPage({ params }: { params: { id: string } }) {
                   </button>
                 </div>
                 <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest animate-pulse">Appuie et chante</p>
+
+                {/* Sélecteur de tolérance / difficulté */}
+                <div className="pt-4 max-w-xs mx-auto space-y-2">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Difficulté de Justesse</span>
+                  <div className="flex bg-muted/65 p-1 rounded-xl gap-1 border border-border/30">
+                    <button 
+                      onClick={() => setTolerance('easy')}
+                      className={cn('flex-1 py-1 text-xs font-bold rounded-lg transition-all', 
+                        tolerance === 'easy' ? 'bg-white text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      Facile
+                    </button>
+                    <button 
+                      onClick={() => setTolerance('medium')}
+                      className={cn('flex-1 py-1 text-xs font-bold rounded-lg transition-all', 
+                        tolerance === 'medium' ? 'bg-white text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      Moyen
+                    </button>
+                    <button 
+                      onClick={() => setTolerance('hard')}
+                      className={cn('flex-1 py-1 text-xs font-bold rounded-lg transition-all', 
+                        tolerance === 'hard' ? 'bg-white text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      Difficile
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -669,7 +798,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
                   <div className="relative inline-grid place-items-center w-24 h-24 rounded-full bg-slate-900 border-4 border-slate-800 shadow-xl mx-auto overflow-hidden">
                     {/* Ring glowing color depending on pitch closeness */}
                     <div className={cn('absolute inset-0 opacity-20 blur-md transition-all duration-300', 
-                      detectedPitch ? (Math.abs(centsOff) <= 12 ? 'bg-success' : centsOff < 0 ? 'bg-cyan-500' : 'bg-orange-500') : 'bg-transparent'
+                      detectedPitch ? (Math.abs(centsOff) <= toleranceCents ? 'bg-success' : centsOff < 0 ? 'bg-cyan-500' : 'bg-orange-500') : 'bg-transparent'
                     )} />
                     <div className="relative z-10 text-center">
                       <div className="font-display text-3xl font-extrabold text-white tracking-tight tabular-nums">
@@ -684,7 +813,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
                   {/* Pitch Guidance Text */}
                   <div className="text-xs font-bold uppercase tracking-wider h-4">
                     {detectedPitch ? (
-                      Math.abs(centsOff) <= 12 ? (
+                      Math.abs(centsOff) <= toleranceCents ? (
                         <span className="text-success animate-pulse">Parfaitement Juste ! ✨</span>
                       ) : centsOff < 0 ? (
                         <span className="text-cyan-500">Trop bas ↑ (montez le ton)</span>
@@ -710,7 +839,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
                     {detectedPitch && (
                       <div 
                         className={cn('absolute top-0.5 bottom-0.5 w-3 rounded-full shadow-md z-20 -ml-1.5 transition-all duration-150',
-                          Math.abs(centsOff) <= 12 ? 'bg-success shadow-success/40' : centsOff < 0 ? 'bg-cyan-500 shadow-cyan-500/40' : 'bg-orange-500 shadow-orange-500/40'
+                          Math.abs(centsOff) <= toleranceCents ? 'bg-success shadow-success/40' : centsOff < 0 ? 'bg-cyan-500 shadow-cyan-500/40' : 'bg-orange-500 shadow-orange-500/40'
                         )}
                         style={{ left: `${((centsOff + 50) / 100) * 100}%` }}
                       />
@@ -718,15 +847,29 @@ export default function LessonPage({ params }: { params: { id: string } }) {
                   </div>
                   <div className="flex justify-between text-[9px] text-muted-foreground font-bold uppercase tracking-widest px-1">
                     <span>Trop bas</span>
-                    <span className={cn(detectedPitch && Math.abs(centsOff) <= 12 ? 'text-success' : 'text-slate-400')}>{detectedPitch && Math.abs(centsOff) <= 12 ? 'Juste' : 'Zône cible'}</span>
+                    <span className={cn(detectedPitch && Math.abs(centsOff) <= toleranceCents ? 'text-success' : 'text-slate-400')}>{detectedPitch && Math.abs(centsOff) <= toleranceCents ? 'Juste' : 'Zône cible'}</span>
                     <span>Trop haut</span>
                   </div>
+                </div>
+
+                {/* Visualiseur de courbe de Pitch Canvas Premium */}
+                <div className="space-y-1.5 animate-fade-in">
+                  <div className="flex items-center justify-between text-[9px] text-muted-foreground font-bold uppercase tracking-widest px-0.5">
+                    <span>Justesse en direct</span>
+                    <span className="text-primary font-semibold">Courbe de hauteur</span>
+                  </div>
+                  <canvas 
+                    ref={canvasRef} 
+                    width={400} 
+                    height={100} 
+                    className="w-full h-[100px] bg-slate-950 rounded-2xl border border-slate-800 shadow-inner overflow-hidden"
+                  />
                 </div>
 
                 {/* Volume Level Spectrogram */}
                 <div className="space-y-1.5">
                   <div className="h-10">
-                    <AudioVisualizer active bars={24} color={detectedPitch && Math.abs(centsOff) <= 12 ? 'hsl(var(--success))' : 'hsl(var(--secondary))'} />
+                    <AudioVisualizer active bars={24} color={detectedPitch && Math.abs(centsOff) <= toleranceCents ? 'hsl(var(--success))' : 'hsl(var(--secondary))'} />
                   </div>
                   <div className="text-center flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
                     <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" /> Analyse en cours...
