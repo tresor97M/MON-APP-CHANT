@@ -3,6 +3,8 @@
 -- Date: 2026-07-06
 -- ============================================================
 
+SET ROLE postgres;
+
 CREATE TABLE IF NOT EXISTS quiz_questions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   lesson_id uuid REFERENCES lessons(id) ON DELETE CASCADE,
