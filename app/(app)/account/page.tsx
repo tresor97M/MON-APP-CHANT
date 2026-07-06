@@ -14,7 +14,16 @@ export default function AccountPage() {
   const { lang, t } = useLang();
   const [tab, setTab] = useState<Tab>('basic');
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [form, setForm] = useState({ display_name: '', bio: '', location: '', phone: '', username: '' });
+  const [form, setForm] = useState({
+    display_name: '',
+    bio: '',
+    location: '',
+    phone: '',
+    username: '',
+    voice_part: '' as string | null,
+    instrument: '' as string | null,
+    role_type: 'chantre'
+  });
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -35,7 +44,16 @@ export default function AccountPage() {
     supabase.from('user_profiles').select('*').eq('user_id', user.id).maybeSingle().then(({ data }) => {
       if (data) {
         setProfile(data);
-        setForm({ display_name: data.display_name, bio: data.bio || '', location: data.location || '', phone: data.phone || '', username: data.username || '' });
+        setForm({
+          display_name: data.display_name,
+          bio: data.bio || '',
+          location: data.location || '',
+          phone: data.phone || '',
+          username: data.username || '',
+          voice_part: data.voice_part || '',
+          instrument: data.instrument || '',
+          role_type: data.instrument ? 'instrumentiste' : 'chantre'
+        });
         setPrivacy({ show_email: data.show_email, show_progress: data.show_progress, allow_messages: data.allow_messages, notify_email: data.notify_email, notify_security: data.notify_security });
       } else {
         setForm(f => ({ ...f, display_name: userName }));
@@ -46,10 +64,20 @@ export default function AccountPage() {
   const handleSaveBasic = async () => {
     if (!user) return;
     setLoading(true);
+    const savePayload = {
+      display_name: form.display_name,
+      bio: form.bio,
+      location: form.location,
+      phone: form.phone,
+      username: form.username,
+      voice_part: form.role_type === 'chantre' ? (form.voice_part || null) : null,
+      instrument: form.role_type === 'instrumentiste' ? (form.instrument || null) : null,
+      updated_at: new Date().toISOString()
+    };
     if (profile) {
-      await supabase.from('user_profiles').update({ ...form, updated_at: new Date().toISOString() }).eq('user_id', user.id);
+      await supabase.from('user_profiles').update(savePayload).eq('user_id', user.id);
     } else {
-      await supabase.from('user_profiles').insert({ user_id: user.id, ...form });
+      await supabase.from('user_profiles').insert({ user_id: user.id, ...savePayload });
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -163,6 +191,58 @@ export default function AccountPage() {
                 </div>
               ))}
             </div>
+            
+            <div className="space-y-4 border-t border-border pt-4 mt-4">
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Rôle & Pupitre / Instrument</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-foreground">Type de Profil</label>
+                  <select
+                    value={form.role_type}
+                    onChange={e => setForm(f => ({ ...f, role_type: e.target.value }))}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-muted/30 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all"
+                  >
+                    <option value="chantre">Chantre (Choriste)</option>
+                    <option value="instrumentiste">Instrumentiste (Musicien)</option>
+                  </select>
+                </div>
+
+                {form.role_type === 'chantre' ? (
+                  <div className="space-y-1 animate-fade-in">
+                    <label className="text-xs font-semibold text-foreground">Pupitre Vocal</label>
+                    <select
+                      value={form.voice_part || ''}
+                      onChange={e => setForm(f => ({ ...f, voice_part: e.target.value || null }))}
+                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-muted/30 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all"
+                    >
+                      <option value="">À évaluer (Je ne sais pas)</option>
+                      <option value="soprano">Soprano (Voix aiguë femme)</option>
+                      <option value="alto">Alto (Voix grave femme)</option>
+                      <option value="tenor">Ténor (Voix aiguë homme)</option>
+                      <option value="basse">Basse (Voix grave homme)</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div className="space-y-1 animate-fade-in">
+                    <label className="text-xs font-semibold text-foreground">Instrument Principal</label>
+                    <select
+                      value={form.instrument || ''}
+                      onChange={e => setForm(f => ({ ...f, instrument: e.target.value || null }))}
+                      className="w-full px-3 py-2.5 rounded-xl border border-border bg-muted/30 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all"
+                    >
+                      <option value="">Sélectionnez un instrument</option>
+                      <option value="piano">Piano / Clavier</option>
+                      <option value="guitare">Guitare</option>
+                      <option value="basse">Basse</option>
+                      <option value="batterie">Batterie / Percussions</option>
+                      <option value="cuivres">Vents / Cuivres</option>
+                      <option value="autre">Autre instrument</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="space-y-1">
               <label className="text-xs font-semibold text-foreground">{t('account_bio')}</label>
               <textarea rows={3} value={form.bio}

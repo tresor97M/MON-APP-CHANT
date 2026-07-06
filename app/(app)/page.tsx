@@ -66,8 +66,18 @@ export default function HomePage() {
 
   const learningCount = hymns.filter(h => h.learning_status === 'en_apprentissage').length;
 
+  const INSTRUMENT_LABELS: Record<string, string> = {
+    piano: 'Piano / Clavier',
+    guitare: 'Guitare',
+    basse: 'Basse',
+    batterie: 'Batterie',
+    cuivres: 'Vents / Cuivres',
+    autre: 'Autre instrument'
+  };
+
   const firstName = profile?.display_name?.split(' ')[0] || user?.email?.split('@')[0] || 'choriste';
   const voice = profile?.voice_part ? VOICE_LABELS[profile.voice_part] : null;
+  const instrument = profile?.instrument ? (INSTRUMENT_LABELS[profile.instrument] || profile.instrument) : null;
 
   if (loading) {
     return (
@@ -96,6 +106,12 @@ export default function HomePage() {
                 {!profile?.voice_confirmed && (
                   <Badge variant="secondary" className="text-xs">En attente de validation</Badge>
                 )}
+              </div>
+            )}
+            {instrument && (
+              <div className="mt-2 flex items-center gap-2">
+                <Music className="h-4 w-4 opacity-80" aria-hidden="true" />
+                <span className="text-sm font-medium">Instrument : {instrument}</span>
               </div>
             )}
           </div>

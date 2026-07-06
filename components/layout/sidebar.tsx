@@ -6,6 +6,7 @@ import {
   Home, Music, CalendarDays, Users, Trophy, User, Mail, Settings,
   GraduationCap, ClipboardCheck, Megaphone, LogOut, MicVocal,
   LayoutDashboard, Table2, Stethoscope, ShieldCheck, BookOpenCheck,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
@@ -73,6 +74,7 @@ function getSections(role: string | undefined, isAdminView: boolean): NavSection
         { href: '/calendrier', label: 'Calendrier', icon: CalendarDays },
         { href: '/repetitions', label: 'Répétitions', icon: MicVocal },
         { href: '/formation', label: 'Formation', icon: BookOpenCheck },
+        { href: '/coach', label: 'Coach IA (Bêta)', icon: Sparkles },
         { href: '/ligue', label: 'Classement', icon: Trophy },
       ],
     },
@@ -139,7 +141,22 @@ export function Sidebar() {
             </div>
             <div className="text-[10px] text-sidebar-foreground/50 leading-relaxed">
               {ROLE_LABELS[role]}
-              {voice ? ` · Pupitre ${VOICE_LABELS[voice]}` : ' · Voix à évaluer'}
+              {userProfile?.instrument ? (
+                ` · ${
+                  ({
+                    piano: 'Piano / Clavier',
+                    guitare: 'Guitare',
+                    basse: 'Basse',
+                    batterie: 'Batterie',
+                    cuivres: 'Vents / Cuivres',
+                    autre: 'Instrumentiste'
+                  }[userProfile.instrument] || userProfile.instrument)
+                }`
+              ) : voice ? (
+                ` · Pupitre ${VOICE_LABELS[voice]}`
+              ) : (
+                ' · Voix à évaluer'
+              )}
             </div>
           </div>
           <button

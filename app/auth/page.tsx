@@ -15,6 +15,15 @@ const VOICES: { value: VoicePart; label: string; desc: string; color: string }[]
   { value: 'basse', label: 'Basse', desc: 'Voix grave (homme)', color: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
 ];
 
+const INSTRUMENTS: { value: string; label: string; desc: string; color: string }[] = [
+  { value: 'piano', label: 'Piano / Clavier', desc: 'Accompagnement', color: 'border-rose-300 bg-rose-50 text-rose-700' },
+  { value: 'guitare', label: 'Guitare', desc: 'Acoustique / Élec', color: 'border-amber-300 bg-amber-50 text-amber-700' },
+  { value: 'basse', label: 'Basse', desc: 'Soutien grave', color: 'border-sky-300 bg-sky-50 text-sky-700' },
+  { value: 'batterie', label: 'Batterie / Percu', desc: 'Rythme & tempo', color: 'border-emerald-300 bg-emerald-50 text-emerald-700' },
+  { value: 'cuivres', label: 'Vents / Cuivres', desc: 'Flûte, sax, etc.', color: 'border-purple-300 bg-purple-50 text-purple-700' },
+  { value: 'autre', label: 'Autre instrument', desc: 'Violon, harpe, etc.', color: 'border-slate-300 bg-slate-50 text-slate-700' },
+];
+
 export default function AuthPage() {
   const router = useRouter();
   const { signIn, signUp, session, userProfile, loading } = useAuth();
@@ -23,8 +32,10 @@ export default function AuthPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [roleType, setRoleType] = useState<'chantre' | 'instrumentiste' | null>(null);
   const [voice, setVoice] = useState<VoicePart | null>(null);
   const [voiceUnknown, setVoiceUnknown] = useState(false);
+  const [instrument, setInstrument] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -51,13 +62,23 @@ export default function AuthPage() {
   };
 
   const handleSignUpFinal = async () => {
-    if (!voice && !voiceUnknown) {
+    if (roleType === 'chantre' && !voice && !voiceUnknown) {
       setError('Choisissez votre voix ou indiquez que vous ne savez pas.');
+      return;
+    }
+    if (roleType === 'instrumentiste' && !instrument) {
+      setError('Veuillez choisir votre instrument principal.');
       return;
     }
     setError(null);
     setSubmitting(true);
-    const res = await signUp(email, password, name, voiceUnknown ? null : voice);
+    const res = await signUp(
+      email,
+      password,
+      name,
+      roleType === 'chantre' ? (voiceUnknown ? null : voice) : null,
+      roleType === 'instrumentiste' ? instrument : null
+    );
     setSubmitting(false);
     if (res.error) {
       setError(res.error);
@@ -196,49 +217,123 @@ export default function AuthPage() {
 
           {mode === 'signup' && step === 2 && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                {VOICES.map(v => (
-                  <button key={v.value} type="button"
-                    onClick={() => { setVoice(v.value); setVoiceUnknown(false); }}
+              {roleType === null ? (
+                <>
+                  <p className="text-xs text-muted-foreground text-center">Sélectionnez votre profil dans la louange :</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button type="button"
+                      onClick={() => setRoleType('chantre')}
+                      className="rounded-2xl border-2 border-border p-5 text-center hover:border-primary/50 transition-all bg-card flex flex-col items-center justify-center min-h-[140px]">
+                      <Mic2 className="w-8 h-8 mb-2 text-primary" />
+                      <div className="font-semibold text-sm">Chantre (Choriste)</div>
+                      <div className="text-[10px] opacity-75 mt-1">Soprano, Alto, Ténor, Basse</div>
+                    </button>
+                    <button type="button"
+                      onClick={() => setRoleType('instrumentiste')}
+                      className="rounded-2xl border-2 border-border p-5 text-center hover:border-primary/50 transition-all bg-card flex flex-col items-center justify-center min-h-[140px]">
+                      <Music className="w-8 h-8 mb-2 text-indigo-500" />
+                      <div className="font-semibold text-sm">Instrumentiste</div>
+                      <div className="text-[10px] opacity-75 mt-1">Piano, Guitare, Basse, Batterie...</div>
+                    </button>
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button type="button" onClick={() => setStep(1)}
+                      className="w-full py-3 rounded-xl border border-border text-sm font-semibold text-foreground hover:bg-muted transition-all flex items-center justify-center gap-2">
+                      <ArrowLeft className="w-4 h-4" />
+                      Retour
+                    </button>
+                  </div>
+                </>
+              ) : roleType === 'chantre' ? (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <button type="button" onClick={() => { setRoleType(null); setVoice(null); }} className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+                      <ArrowLeft className="w-3.5 h-3.5" /> Changer de rôle (Chantre)
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {VOICES.map(v => (
+                      <button key={v.value} type="button"
+                        onClick={() => { setVoice(v.value); setVoiceUnknown(false); }}
+                        className={cn(
+                          'relative rounded-xl border-2 p-4 text-left transition-all',
+                          voice === v.value && !voiceUnknown ? v.color : 'border-border bg-card hover:border-muted-foreground/30',
+                        )}>
+                        {voice === v.value && !voiceUnknown && (
+                          <Check className="absolute top-2 right-2 w-4 h-4" />
+                        )}
+                        <Mic2 className="w-5 h-5 mb-2" />
+                        <div className="font-semibold text-sm">{v.label}</div>
+                        <div className="text-xs opacity-70 mt-0.5">{v.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button"
+                    onClick={() => { setVoiceUnknown(!voiceUnknown); setVoice(null); }}
                     className={cn(
-                      'relative rounded-xl border-2 p-4 text-left transition-all',
-                      voice === v.value && !voiceUnknown ? v.color : 'border-border bg-card hover:border-muted-foreground/30',
+                      'w-full rounded-xl border-2 p-3 flex items-center gap-3 text-left transition-all',
+                      voiceUnknown ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-card hover:border-muted-foreground/30 text-muted-foreground',
                     )}>
-                    {voice === v.value && !voiceUnknown && (
-                      <Check className="absolute top-2 right-2 w-4 h-4" />
-                    )}
-                    <Mic2 className="w-5 h-5 mb-2" />
-                    <div className="font-semibold text-sm">{v.label}</div>
-                    <div className="text-xs opacity-70 mt-0.5">{v.desc}</div>
+                    <HelpCircle className="w-5 h-5 shrink-0" />
+                    <div>
+                      <div className="font-semibold text-sm">Je ne sais pas encore</div>
+                      <div className="text-xs opacity-70">Le maître de chœur évaluera votre voix</div>
+                    </div>
+                    {voiceUnknown && <Check className="w-4 h-4 ml-auto shrink-0" />}
                   </button>
-                ))}
-              </div>
-              <button type="button"
-                onClick={() => { setVoiceUnknown(!voiceUnknown); setVoice(null); }}
-                className={cn(
-                  'w-full rounded-xl border-2 p-3 flex items-center gap-3 text-left transition-all',
-                  voiceUnknown ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-card hover:border-muted-foreground/30 text-muted-foreground',
-                )}>
-                <HelpCircle className="w-5 h-5 shrink-0" />
-                <div>
-                  <div className="font-semibold text-sm">Je ne sais pas encore</div>
-                  <div className="text-xs opacity-70">Le maître de chœur évaluera votre voix</div>
-                </div>
-                {voiceUnknown && <Check className="w-4 h-4 ml-auto shrink-0" />}
-              </button>
 
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setStep(1)}
-                  className="px-4 py-3 rounded-xl border border-border text-sm font-semibold text-foreground hover:bg-muted transition-all flex items-center gap-2">
-                  <ArrowLeft className="w-4 h-4" />
-                  Retour
-                </button>
-                <button type="button" onClick={handleSignUpFinal} disabled={submitting}
-                  className="flex-1 py-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                  {submitting ? 'Création...' : 'Créer mon compte'}
-                  {!submitting && <ArrowRight className="w-4 h-4" />}
-                </button>
-              </div>
+                  <div className="flex gap-3 pt-2">
+                    <button type="button" onClick={() => setRoleType(null)}
+                      className="px-4 py-3 rounded-xl border border-border text-sm font-semibold text-foreground hover:bg-muted transition-all flex items-center gap-2">
+                      <ArrowLeft className="w-4 h-4" />
+                      Retour
+                    </button>
+                    <button type="button" onClick={handleSignUpFinal} disabled={submitting}
+                      className="flex-1 py-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                      {submitting ? 'Création...' : 'Créer mon compte'}
+                      {!submitting && <ArrowRight className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <button type="button" onClick={() => { setRoleType(null); setInstrument(null); }} className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+                      <ArrowLeft className="w-3.5 h-3.5" /> Changer de rôle (Instrumentiste)
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 animate-fade-in">
+                    {INSTRUMENTS.map(ins => (
+                      <button key={ins.value} type="button"
+                        onClick={() => { setInstrument(ins.value); }}
+                        className={cn(
+                          'relative rounded-xl border-2 p-4 text-left transition-all',
+                          instrument === ins.value ? ins.color : 'border-border bg-card hover:border-muted-foreground/30',
+                        )}>
+                        {instrument === ins.value && (
+                          <Check className="absolute top-2 right-2 w-4 h-4" />
+                        )}
+                        <Music className="w-5 h-5 mb-2" />
+                        <div className="font-semibold text-sm">{ins.label}</div>
+                        <div className="text-xs opacity-70 mt-0.5">{ins.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button type="button" onClick={() => setRoleType(null)}
+                      className="px-4 py-3 rounded-xl border border-border text-sm font-semibold text-foreground hover:bg-muted transition-all flex items-center gap-2">
+                      <ArrowLeft className="w-4 h-4" />
+                      Retour
+                    </button>
+                    <button type="button" onClick={handleSignUpFinal} disabled={submitting}
+                      className="flex-1 py-3 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                      {submitting ? 'Création...' : 'Créer mon compte'}
+                      {!submitting && <ArrowRight className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

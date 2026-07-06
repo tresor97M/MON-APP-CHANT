@@ -11,7 +11,7 @@ type AuthCtx = {
   userProfile: UserProfile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string, name: string, voicePart: VoicePart | null) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, name: string, voicePart: VoicePart | null, instrument: string | null) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
@@ -74,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 display_name: name,
                 role: 'choriste',
                 voice_part: meta.voice_part || null,
+                instrument: meta.instrument || null,
               })
               .select()
               .maybeSingle();
@@ -104,11 +105,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message || null };
   };
 
-  const signUp = async (email: string, password: string, name: string, voicePart: VoicePart | null) => {
+  const signUp = async (email: string, password: string, name: string, voicePart: VoicePart | null, instrument: string | null) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { name, voice_part: voicePart } },
+      options: { data: { name, voice_part: voicePart, instrument } },
     });
 
     if (error) return { error: error.message };
@@ -120,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         display_name: name,
         role: 'choriste',
         voice_part: voicePart,
+        instrument: instrument,
       });
     }
 
