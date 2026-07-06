@@ -3,23 +3,63 @@
 import { useEffect, useState } from 'react';
 import { Trophy, Crown, ArrowUp, ArrowDown, Minus } from 'lucide-react';
 import { supabase, type LeagueMember } from '@/lib/supabase';
+import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 
 export default function LiguePage() {
+  const { session } = useAuth();
   const [members, setMembers] = useState<LeagueMember[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.from('league_members').select('*').order('sort_order').then(({ data }) => {
-      setMembers(data || []);
+    (async () => {
+      // 1. Charger les membres de ligue
+      const { data: dbMembers } = await supabase.from('league_members').select('*').order('sort_order');
+      let list = dbMembers || [];
+
+      // 2. Charger les stats de l'utilisateur connecté s'il y a une session active
+      if (session?.user) {
+        const { data: stats } = await supabase.from('user_stats').select('*').eq('user_id', session.user.id).maybeSingle();
+        const { data: profile } = await supabase.from('user_profiles').select('*').eq('user_id', session.user.id).maybeSingle();
+
+        const currentXp = stats?.weekly_xp || 0;
+        const displayName = profile?.display_name || session.user.email?.split('@')[0] || 'Utilisateur';
+
+        const meIndex = list.findIndex(m => m.is_current_user);
+        if (meIndex !== -1) {
+          // Mettre à jour l'entrée existante de l'utilisateur avec son XP réel
+          list[meIndex] = {
+            ...list[meIndex],
+            display_name: displayName,
+            weekly_xp: currentXp
+          };
+        } else {
+          // Récupérer une ligue existante par défaut
+          const leagueId = list[0]?.league_id || '00000000-0000-0000-0000-000000000000';
+          
+          // Ajouter dynamiquement l'étudiant
+          list.push({
+            id: session.user.id,
+            league_id: leagueId,
+            display_name: displayName,
+            avatar_emoji: '🎤',
+            weekly_xp: currentXp,
+            is_current_user: true,
+            sort_order: 99
+          });
+        }
+      }
+
+      setMembers(list);
       setLoading(false);
-    });
-  }, []);
+    })();
+  }, [session]);
 
   if (loading) return <div className="h-96 rounded-3xl bg-muted animate-pulse" />;
 
   const sorted = [...members].sort((a, b) => b.weekly_xp - a.weekly_xp);
   const myRank = sorted.findIndex((m) => m.is_current_user) + 1;
+  const myStats = sorted[myRank - 1];
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -38,17 +78,25 @@ export default function LiguePage() {
       </section>
 
       {/* My rank highlight */}
-      <section className="rounded-2xl bg-primary/5 border border-primary/15 p-4 flex items-center gap-3">
-        <div className="grid place-items-center w-10 h-10 rounded-xl bg-primary text-primary-foreground font-bold text-sm">{myRank}</div>
-        <div className="flex-1">
-          <div className="text-sm font-semibold">Ta position</div>
-          <div className="text-xs text-muted-foreground">{myRank <= 3 ? 'Zone de promotion !' : myRank > sorted.length - 3 ? 'Zone de relégation' : 'Maintiens le rythme'}</div>
-        </div>
-        <div className="text-right">
-          <div className="font-display text-lg font-bold tabular-nums">{sorted[myRank - 1]?.weekly_xp} XP</div>
-          <div className="text-[11px] text-muted-foreground">cette semaine</div>
-        </div>
-      </section>
+      {myRank > 0 && myStats && (
+        <section className="rounded-2xl bg-primary/5 border border-primary/15 p-4 flex items-center gap-3">
+          <div className="grid place-items-center w-10 h-10 rounded-xl bg-primary text-primary-foreground font-bold text-sm">{myRank}</div>
+          <div className="flex-1">
+            <div className="text-sm font-semibold">Ta position</div>
+            <div className="text-xs text-muted-foreground">
+              {myRank <= 3 
+                ? 'Zone de promotion !' 
+                : myRank > sorted.length - 3 
+                  ? 'Zone de relégation' 
+                  : 'Maintiens le rythme'}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="font-display text-lg font-bold tabular-nums">{myStats.weekly_xp} XP</div>
+            <div className="text-[11px] text-muted-foreground">cette semaine</div>
+          </div>
+        </section>
+      )}
 
       {/* Leaderboard */}
       <section className="rounded-3xl bg-card border border-border overflow-hidden">
@@ -65,7 +113,10 @@ export default function LiguePage() {
                 </div>
                 <div className="text-xl">{m.avatar_emoji}</div>
                 <div className="flex-1 min-w-0">
-                  <div className={cn('text-sm font-medium truncate', m.is_current_user && 'text-primary')}>{m.display_name}{m.is_current_user && ' (toi)'}</div>
+                  <div className={cn('text-sm font-medium truncate', m.is_current_user && 'text-primary')}>
+                    {m.display_name}
+                    {m.is_current_user && ' (toi)'}
+                  </div>
                 </div>
                 {trend === 'up' ? <ArrowUp className="w-3.5 h-3.5 text-success" /> : trend === 'down' ? <ArrowDown className="w-3.5 h-3.5 text-destructive" /> : <Minus className="w-3.5 h-3.5 text-muted-foreground" />}
                 <div className="text-sm font-semibold tabular-nums w-16 text-right">{m.weekly_xp}</div>

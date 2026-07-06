@@ -573,12 +573,51 @@ export default function LessonPage({ params }: { params: { id: string } }) {
         }
         const { data: us } = await supabase.from('user_stats').select('*').limit(1).maybeSingle();
         if (us) {
+          const newTotalXp = us.total_xp + (lesson.xp_reward || 10);
+          const newDailyXp = us.daily_xp + (lesson.xp_reward || 10);
+          const newWeeklyXp = us.weekly_xp + (lesson.xp_reward || 10);
+
           await supabase.from('user_stats').update({
-            total_xp: us.total_xp + (lesson.xp_reward || 10),
-            daily_xp: us.daily_xp + (lesson.xp_reward || 10),
-            weekly_xp: us.weekly_xp + (lesson.xp_reward || 10),
+            total_xp: newTotalXp,
+            daily_xp: newDailyXp,
+            weekly_xp: newWeeklyXp,
             last_active_date: new Date().toISOString().slice(0, 10),
           }).eq('id', us.id);
+
+          // --- Système de Badges Dynamiques (Sprint 4) ---
+          try {
+            const { data: unlocked } = await supabase.from('user_badges').select('badge_id');
+            const unlockedIds = (unlocked || []).map((u) => u.badge_id);
+
+            const newBadges: string[] = [];
+
+            // Badge A : Premiers pas (Compléter une première leçon)
+            const firstBadgeId = '11111111-1111-1111-1111-111111111111';
+            if (!unlockedIds.includes(firstBadgeId)) {
+              newBadges.push(firstBadgeId);
+            }
+
+            // Badge B : Justesse d'Or (Score moyen de la leçon >= 90)
+            const goldBadgeId = '11111111-1111-1111-1111-222222222222';
+            if (!unlockedIds.includes(goldBadgeId) && avgScore >= 90) {
+              newBadges.push(goldBadgeId);
+            }
+
+            // Badge C : Régularité (Série >= 3 jours d'activité)
+            const streakBadgeId = '11111111-1111-1111-1111-333333333333';
+            if (!unlockedIds.includes(streakBadgeId) && us.streak_days >= 3) {
+              newBadges.push(streakBadgeId);
+            }
+
+            if (newBadges.length > 0) {
+              const inserts = newBadges.map((badgeId) => ({
+                badge_id: badgeId,
+              }));
+              await supabase.from('user_badges').insert(inserts);
+            }
+          } catch (badgeErr) {
+            console.error('Erreur lors du déblocage des badges :', badgeErr);
+          }
         }
       }
       celebrate('big');
