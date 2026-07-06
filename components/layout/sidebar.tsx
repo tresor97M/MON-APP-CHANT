@@ -2,137 +2,127 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Compass, Trophy, User, Mail, Settings, Brain, Video, Award, MessageSquare, HelpCircle, BarChart2, BookOpen, Edit2, LogOut } from 'lucide-react';
+import {
+  Home, Music, CalendarDays, Users, Trophy, User, Mail, Settings,
+  GraduationCap, ClipboardCheck, Megaphone, LogOut, MicVocal,
+  LayoutDashboard, Table2, Stethoscope, ShieldCheck, BookOpenCheck,
+} from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
-import { useLang } from '@/hooks/use-lang';
+import { isStaff, canManageRoles } from '@/lib/permissions';
+import { VOICE_LABELS, ROLE_LABELS, type Role, type VoicePart } from '@/lib/types';
 
 type NavItem = {
   href: string;
   label: string;
-  icon: any;
-  badge?: string;
-  badgeColor?: string;
+  icon: React.ComponentType<{ className?: string }>;
 };
 
 type NavSection = {
   title: string;
   items: NavItem[];
-  adminOnly?: boolean;
 };
 
-const getSections = (userProfile: any, isAdminView: boolean, lang: string): NavSection[] => {
-  const isAdmin = userProfile?.role === 'admin' || userProfile?.role === 'super_admin';
-  const isSuper = userProfile?.role === 'super_admin';
+function getSections(role: string | undefined, isAdminView: boolean): NavSection[] {
+  const staff = isStaff(role);
 
-  if (isAdminView && isAdmin) {
-    // Version Espace Admin complète (conforme à "INSTRUCTOR PAGES")
+  if (isAdminView && staff) {
     return [
       {
-        title: 'APPLICATIONS',
+        title: 'ESPACES',
         items: [
-          { href: '/', label: lang === 'fr' ? 'Espace Élève' : 'Student Space', icon: Home },
-          { href: '/admin', label: lang === 'fr' ? 'Espace Admin' : 'Admin Space', icon: User }
-        ]
+          { href: '/', label: 'Espace Choriste', icon: Home },
+          { href: '/admin', label: 'Espace Direction', icon: LayoutDashboard },
+        ],
       },
       {
-        title: lang === 'fr' ? 'COMPTE' : 'ACCOUNT',
+        title: 'DIRECTION',
         items: [
-          { href: '/account', label: lang === 'fr' ? 'Mon Compte' : 'My Account', icon: Settings },
-          { href: '/messages', label: lang === 'fr' ? 'Mes Messages' : 'My Messages', icon: Mail }
-        ]
+          { href: '/admin/cantiques', label: 'Cantiques', icon: Music },
+          { href: '/admin/calendrier', label: 'Calendrier (sheet)', icon: Table2 },
+          { href: '/admin/repetitions', label: 'Répétitions & Pointage', icon: ClipboardCheck },
+          { href: '/admin/membres', label: 'Membres & Pupitres', icon: Users },
+          { href: '/admin/evaluations', label: 'Évaluations & Lacunes', icon: Stethoscope },
+          { href: '/admin/formation', label: 'Formation', icon: GraduationCap },
+          { href: '/admin/annonces', label: 'Annonces', icon: Megaphone },
+          ...(canManageRoles(role) ? [{ href: '/admin/acces', label: 'Gestion Accès', icon: ShieldCheck }] : []),
+        ],
       },
       {
-        title: lang === 'fr' ? 'ADMINISTRATEUR' : 'INSTRUCTOR',
+        title: 'COMPTE',
         items: [
-          { href: '/admin/cours', label: lang === 'fr' ? 'Gérer les cours' : 'Course Manager', icon: BookOpen },
-          { href: '/admin/quiz', label: lang === 'fr' ? 'Gérer les quiz' : 'Quiz Manager', icon: Brain },
-          { href: '/admin/earnings', label: lang === 'fr' ? 'Gains' : 'Earnings', icon: BarChart2 },
-          { href: '/admin/statement', label: lang === 'fr' ? 'Rapports' : 'Statement', icon: Award },
-          { href: '/communaute/forum', label: lang === 'fr' ? 'Forum de discussion' : 'Community', icon: MessageSquare },
-          { href: '/communaute/aide', label: lang === 'fr' ? 'Centre d\'aide' : 'Help Center', icon: HelpCircle },
-          ...(isSuper ? [{ href: '/admin/acces', label: lang === 'fr' ? 'Gestion Accès' : 'Access Manager', icon: Settings }] : []),
-        ]
-      }
+          { href: '/account', label: 'Mon Compte', icon: Settings },
+          { href: '/messages', label: 'Messages', icon: Mail },
+        ],
+      },
     ];
   }
 
-  // Version Espace Élève standard
   return [
     {
-      title: 'APPLICATIONS',
+      title: 'ESPACES',
       items: [
-        { href: '/', label: lang === 'fr' ? 'Espace Élève' : 'Student Space', icon: Home },
-        ...(isAdmin ? [{ href: '/admin', label: lang === 'fr' ? 'Espace Admin' : 'Admin Space', icon: User }] : [])
-      ]
+        { href: '/', label: 'Tableau de bord', icon: Home },
+        ...(staff ? [{ href: '/admin', label: 'Espace Direction', icon: LayoutDashboard }] : []),
+      ],
     },
     {
-      title: lang === 'fr' ? 'COMPTE' : 'ACCOUNT',
+      title: 'CHORALE',
       items: [
-        { href: '/account', label: lang === 'fr' ? 'Mon Compte' : 'My Account', icon: Settings },
-        { href: '/messages', label: lang === 'fr' ? 'Mes Messages' : 'My Messages', icon: Mail }
-      ]
+        { href: '/cantiques', label: 'Répertoire', icon: Music },
+        { href: '/calendrier', label: 'Calendrier', icon: CalendarDays },
+        { href: '/repetitions', label: 'Répétitions', icon: MicVocal },
+        { href: '/formation', label: 'Formation', icon: BookOpenCheck },
+        { href: '/ligue', label: 'Classement', icon: Trophy },
+      ],
     },
     {
-      title: lang === 'fr' ? 'ÉLÈVE' : 'STUDENT',
+      title: 'COMPTE',
       items: [
-        { href: '/parcours', label: lang === 'fr' ? 'Parcourir les cours' : 'Browse Courses', icon: Compass },
-        { href: '/lecon/1', label: lang === 'fr' ? 'Suivre une leçon' : 'Take Course', icon: Video },
-        { href: '/lecon/1', label: lang === 'fr' ? 'Faire un quiz' : 'Take Quiz', icon: Brain },
-        { href: '/profil', label: lang === 'fr' ? 'Résultats des quiz' : 'Quiz Results', icon: Award },
-        { href: '/parcours', label: lang === 'fr' ? 'Mes cours' : 'My Courses', icon: Compass, badge: 'PRO', badgeColor: 'bg-primary text-primary-foreground' },
-        { href: '/communaute/forum', label: lang === 'fr' ? 'Forum de discussion' : 'Forum', icon: MessageSquare },
-        { href: '/communaute/aide', label: lang === 'fr' ? 'Centre d\'aide' : 'Help Center', icon: HelpCircle },
-      ]
-    }
+        { href: '/profil', label: 'Mon Profil', icon: User },
+        { href: '/account', label: 'Paramètres', icon: Settings },
+        { href: '/messages', label: 'Messages', icon: Mail },
+      ],
+    },
   ];
-};
+}
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { lang } = useLang();
   const { userProfile, signOut } = useAuth();
-  
+
   const isAdminView = pathname.startsWith('/admin');
-  const sections = getSections(userProfile, isAdminView, lang);
+  const sections = getSections(userProfile?.role, isAdminView);
+  const voice = userProfile?.voice_part as VoicePart | null;
+  const role = (userProfile?.role || 'choriste') as Role;
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:flex-col md:w-64 md:fixed md:top-16 md:bottom-0 md:left-0 border-r border-gray-700 bg-[#2d3436] text-white">
+      {/* Sidebar desktop */}
+      <aside className="hidden md:flex md:flex-col md:w-64 md:fixed md:top-16 md:bottom-0 md:left-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
         <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6 no-scrollbar">
           {sections.map((section, sIdx) => (
             <div key={sIdx} className="space-y-1.5">
-              {/* Section Header */}
-              <div className="px-3 text-[10px] font-bold text-white/40 uppercase tracking-widest">
+              <div className="px-3 text-[10px] font-bold text-sidebar-foreground/40 uppercase tracking-widest">
                 {section.title}
               </div>
-
-              {/* Section Items */}
               <div className="space-y-0.5">
                 {section.items.map((item, iIdx) => {
-                  const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+                  const active = pathname === item.href || (item.href !== '/' && item.href !== '/admin' && pathname.startsWith(item.href)) || (item.href === '/admin' && pathname === '/admin');
                   const Icon = item.icon;
                   return (
                     <Link
                       key={iIdx}
                       href={item.href}
                       className={cn(
-                        'group flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200',
+                        'group flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200',
                         active
-                          ? 'bg-gradient-to-r from-primary/30 to-secondary/10 text-white border-l-2 border-primary shadow-sm shadow-primary/5'
-                          : 'text-white/60 hover:text-white hover:bg-white/5'
+                          ? 'bg-primary/15 text-sidebar-foreground border-l-2 border-primary'
+                          : 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-foreground/5',
                       )}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Icon className={cn('w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110', active ? 'text-primary' : 'text-white/40 group-hover:text-white')} />
-                        <span className="truncate">{item.label}</span>
-                      </div>
-                      {item.badge && (
-                        <span className={cn('text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 scale-90', item.badgeColor)}>
-                          {item.badge}
-                        </span>
-                      )}
+                      <Icon className={cn('w-4 h-4 shrink-0', active ? 'text-primary' : 'text-sidebar-foreground/40 group-hover:text-sidebar-foreground')} />
+                      <span className="truncate">{item.label}</span>
                     </Link>
                   );
                 })}
@@ -141,51 +131,49 @@ export function Sidebar() {
           ))}
         </div>
 
-        {/* Bottom area */}
-        <div className="p-3 border-t border-primary/10 space-y-2">
-          {isAdminView ? (
-            <button 
-              onClick={() => signOut()}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-semibold hover:bg-red-500/20 transition-all shadow-md"
-            >
-              <LogOut className="w-4 h-4" />
-              {lang === 'fr' ? 'Déconnexion' : 'Log Out'}
-            </button>
-          ) : (
-            <div className="rounded-2xl bg-gradient-to-br from-primary/20 via-secondary/10 to-transparent border border-primary/20 p-3.5 relative overflow-hidden">
-              <div className="absolute -right-6 -bottom-6 w-16 h-16 bg-primary/10 rounded-full blur-xl" />
-              <div className="text-[11px] font-bold text-white mb-0.5 relative z-10">
-                {lang === 'fr' ? 'Passe Premium' : 'Upgrade to Premium'}
-              </div>
-              <div className="text-[10px] text-white/50 leading-relaxed mb-2.5 relative z-10">
-                {lang === 'fr' ? 'Analyse vocale et leçons illimitées.' : 'Unlock real-time feedback & extra levels.'}
-              </div>
-              <button className="w-full text-[10px] font-bold bg-gradient-to-r from-primary to-secondary text-primary-foreground rounded-lg py-1.5 hover:opacity-90 transition-opacity relative z-10 shadow-md shadow-primary/10">
-                {lang === 'fr' ? 'Découvrir' : 'Discover'}
-              </button>
+        {/* Carte identité pupitre + déconnexion */}
+        <div className="p-3 border-t border-sidebar-border space-y-2">
+          <div className="rounded-2xl bg-sidebar-foreground/5 border border-sidebar-border p-3.5">
+            <div className="text-[11px] font-bold text-sidebar-foreground mb-0.5 truncate">
+              {userProfile?.display_name || 'Membre'}
             </div>
-          )}
+            <div className="text-[10px] text-sidebar-foreground/50 leading-relaxed">
+              {ROLE_LABELS[role]}
+              {voice ? ` · Pupitre ${VOICE_LABELS[voice]}` : ' · Voix à évaluer'}
+            </div>
+          </div>
+          <button
+            onClick={() => signOut()}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive text-xs font-semibold hover:bg-destructive/20 transition-all"
+          >
+            <LogOut className="w-4 h-4" />
+            Déconnexion
+          </button>
         </div>
       </aside>
 
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-[#2d3436]/95 backdrop-blur-md border-t border-gray-700">
-        <div className="flex items-center justify-around h-16 px-2 text-white">
-          <Link href="/" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5 text-xs', pathname === '/' ? 'text-primary' : 'text-white/55')}>
+      {/* Navigation mobile */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-sidebar/95 backdrop-blur-md border-t border-sidebar-border">
+        <div className="flex items-center justify-around h-16 px-2 text-sidebar-foreground">
+          <Link href="/" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5', pathname === '/' ? 'text-primary' : 'text-sidebar-foreground/55')}>
             <Home className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">{lang === 'fr' ? 'Accueil' : 'Home'}</span>
+            <span className="text-[9px] font-semibold">Accueil</span>
           </Link>
-          <Link href="/parcours" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5 text-xs', pathname === '/parcours' ? 'text-primary' : 'text-white/55')}>
-            <Compass className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">{lang === 'fr' ? 'Parcours' : 'Browse'}</span>
+          <Link href="/cantiques" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5', pathname.startsWith('/cantiques') ? 'text-primary' : 'text-sidebar-foreground/55')}>
+            <Music className="w-4 h-4" />
+            <span className="text-[9px] font-semibold">Cantiques</span>
           </Link>
-          <Link href="/ligue" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5 text-xs', pathname === '/ligue' ? 'text-primary' : 'text-white/55')}>
-            <Trophy className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">{lang === 'fr' ? 'Ligue' : 'League'}</span>
+          <Link href="/calendrier" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5', pathname.startsWith('/calendrier') ? 'text-primary' : 'text-sidebar-foreground/55')}>
+            <CalendarDays className="w-4 h-4" />
+            <span className="text-[9px] font-semibold">Calendrier</span>
           </Link>
-          <Link href="/profil" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5 text-xs', pathname === '/profil' ? 'text-primary' : 'text-white/55')}>
+          <Link href="/repetitions" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5', pathname.startsWith('/repetitions') ? 'text-primary' : 'text-sidebar-foreground/55')}>
+            <MicVocal className="w-4 h-4" />
+            <span className="text-[9px] font-semibold">Répétitions</span>
+          </Link>
+          <Link href="/profil" className={cn('flex flex-col items-center gap-1.5 px-3 py-1.5', pathname.startsWith('/profil') ? 'text-primary' : 'text-sidebar-foreground/55')}>
             <User className="w-4 h-4" />
-            <span className="text-[9px] font-semibold">{lang === 'fr' ? 'Profil' : 'Profile'}</span>
+            <span className="text-[9px] font-semibold">Profil</span>
           </Link>
         </div>
       </nav>

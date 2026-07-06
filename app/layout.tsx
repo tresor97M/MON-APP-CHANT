@@ -11,16 +11,17 @@ const sans = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap
 const display = Sora({ subsets: ['latin'], variable: '--font-display', weight: ['400', '500', '600', '700'], display: 'swap' });
 
 export const metadata: Metadata = {
-  title: "Maestro Studio — L'Art du Chant par l'IA",
-  description: 'Libère ta voix. Entraîne-toi au chant avec un coach IA personnalisé. Écoute, analyse, justesse et technique vocale.',
-  applicationName: 'Maestro Studio',
-  authors: [{ name: 'Maestro Studio' }],
-  keywords: ['chant', 'musique', 'coach vocal', 'IA', 'justesse', 'respiration', 'vocalises'],
+  title: 'Chorale — Gestion, Répertoire & Formation',
+  description:
+    'Plateforme de gestion de chorale : répertoire de cantiques, calendrier du répertoire, répétitions et pointage, apprentissage par pupitre et formation continue.',
+  applicationName: 'Chorale',
+  authors: [{ name: 'Chorale' }],
+  keywords: ['chorale', 'cantiques', 'répertoire', 'répétitions', 'pupitre', 'soprano', 'alto', 'ténor', 'basse'],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr" suppressHydrationWarning>
+    <html lang="fr" suppressHydrationWarning className="bg-background">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>

@@ -57,6 +57,10 @@ export type UserProfile = {
   notify_email: boolean; notify_security: boolean;
   role: string; learning_profile: string | null; instrument: string | null;
   admin_permissions: string[] | null;
+  voice_part: 'soprano' | 'alto' | 'tenor' | 'basse' | null;
+  voice_confirmed: boolean;
+  status: 'actif' | 'inactif' | 'en_pause';
+  joined_choir_at: string | null;
   created_at: string; updated_at: string;
 };
 

@@ -44,6 +44,11 @@
     --chart-5: 0 84% 62%;    /* red */
 
     --radius: 0.75rem;
+
+    /* Sidebar sombre (identique clair/sombre) */
+    --sidebar: 218 20% 18%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-border: 218 15% 26%;
   }
 
   .dark {
@@ -75,6 +80,10 @@
     --warning-foreground: 224 28% 12%;
     --destructive: 0 84% 62%;
     --destructive-foreground: 0 0% 100%;
+
+    --sidebar: 224 28% 10%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-border: 224 20% 20%;
   }
 }
 

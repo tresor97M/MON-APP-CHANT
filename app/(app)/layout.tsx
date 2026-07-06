@@ -28,7 +28,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
           <div className="inline-grid place-items-center w-16 h-16 rounded-3xl bg-gradient-to-tr from-primary to-secondary text-primary-foreground animate-pulse shadow-lg shadow-primary/20">
             <Music className="w-8 h-8" />
           </div>
-          <div className="text-sm text-muted-foreground font-medium">Chargement de Maestro Studio...</div>
+          <div className="text-sm text-muted-foreground font-medium">Chargement de votre espace chorale...</div>
         </div>
       </div>
     );
