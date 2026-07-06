@@ -181,6 +181,25 @@ export default function LessonPage({ params }: { params: { id: string } }) {
       setExercises(ex || []);
       setMaestroMsg(getMaestroMessage('intro'));
       setMaestroMood('encouraging');
+
+      // Chargement dynamique des questions de quiz
+      const { data: quiz } = await supabase.from('quiz_questions').select('*').eq('lesson_id', l.id);
+      if (quiz && quiz.length > 0) {
+        const formatted = quiz.map((q: any) => ({
+          q: q.question,
+          options: q.options,
+          answer: q.correct_answer_index,
+          explain: q.explanation
+        }));
+        setQuizQuestions(formatted);
+      } else {
+        const modName = m?.name?.toLowerCase() || '';
+        const bankKey = modName.includes('respiration') ? 'respiration' :
+                        modName.includes('justesse') ? 'justesse' :
+                        modName.includes('vibrato') ? 'justesse' : 'default';
+        const bank = QUIZ_BANK[bankKey] || QUIZ_BANK.default;
+        setQuizQuestions(bank);
+      }
     })();
   }, [params.id]);
 
@@ -241,6 +260,20 @@ export default function LessonPage({ params }: { params: { id: string } }) {
 
     setFeedback({ score: baseScore, accuracy: acc, points, tip: TIPS[Math.floor(Math.random() * TIPS.length)] });
     setScore((s) => s + baseScore);
+    
+    // Enregistrement de la tentative physique dans Supabase
+    if (current?.id) {
+      supabase.from('attempts').insert({
+        exercise_id: current.id,
+        score: baseScore,
+        accuracy: acc,
+        duration_ms: 4000,
+        feedback: { stability, volumeMatch }
+      }).then(({ error }) => {
+        if (error) console.error('Erreur lors de l\'enregistrement de la tentative :', error.message);
+      });
+    }
+
     playSound(baseScore >= 75 ? 'correct' : 'wrong');
     if (baseScore >= 80) { setMaestroMood('happy'); setMaestroMsg(getMaestroMessage('excellent')); }
     else if (baseScore >= 65) { setMaestroMood('encouraging'); setMaestroMsg(getMaestroMessage('good')); }
@@ -359,17 +392,18 @@ export default function LessonPage({ params }: { params: { id: string } }) {
   }, [stopSim, finishExercise]);
 
   const startQuiz = useCallback(() => {
-    const metric = (current?.scoring as Record<string, unknown>)?.metric as string | undefined;
-    const bank = metric === 'quiz_score' ? QUIZ_BANK.default : QUIZ_BANK.echauffement;
-    const shuffled = [...bank].sort(() => Math.random() - 0.5).slice(0, 3);
-    setQuizQuestions(shuffled);
+    if (quizQuestions.length === 0) {
+      const metric = (current?.scoring as Record<string, unknown>)?.metric as string | undefined;
+      const bank = metric === 'quiz_score' ? QUIZ_BANK.default : QUIZ_BANK.echauffement;
+      setQuizQuestions(bank);
+    }
     setQuizIdx(0);
     setQuizCorrect(0);
     setQuizAnswer(null);
     setMaestroMood('talking');
     setMaestroMsg('Petit quiz pour vérifier tes connaissances. Tu gères !');
     setPhase('practice');
-  }, [current]);
+  }, [current, quizQuestions.length]);
 
   const answerQuiz = useCallback((idx: number) => {
     if (quizAnswer !== null) return;
@@ -400,6 +434,20 @@ export default function LessonPage({ params }: { params: { id: string } }) {
           tip: TIPS[Math.floor(Math.random() * TIPS.length)],
         });
         setScore((s) => s + pct);
+
+        // Enregistrement de la tentative de quiz dans Supabase
+        if (current?.id) {
+          supabase.from('attempts').insert({
+            exercise_id: current.id,
+            score: pct,
+            accuracy: pct,
+            duration_ms: 8000,
+            feedback: { quizCorrect: quizCorrect + (correct ? 1 : 0), totalQuestions: quizQuestions.length }
+          }).then(({ error }) => {
+            if (error) console.error('Erreur lors de l\'enregistrement de la tentative de quiz :', error.message);
+          });
+        }
+
         setPhase('result');
       }
     }, 1600);

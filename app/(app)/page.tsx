@@ -18,7 +18,7 @@ export default function HomePage() {
   const [continueItems, setContinueItems] = useState<ContinueItem[]>([]);
   const [badgeCount, setBadgeCount] = useState(0);
   const [totalBadges, setTotalBadges] = useState(0);
-  const [attempts, setAttempts] = useState<{ score: number }[]>([]);
+  const [attempts, setAttempts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [maestroMsg, setMaestroMsg] = useState('Salut ! Prêt à chanter aujourd\'hui ?');
 
@@ -58,7 +58,7 @@ export default function HomePage() {
         supabase.from('user_progress').select('*'),
         supabase.from('user_badges').select('*', { count: 'exact', head: true }),
         supabase.from('badges').select('*', { count: 'exact', head: true }),
-        supabase.from('attempts').select('score').order('created_at', { ascending: false }).limit(20)
+        supabase.from('attempts').select('*, exercise:exercises(*)').order('created_at', { ascending: false }).limit(30)
       ]);
 
       let s = statsResult.data;
@@ -151,23 +151,37 @@ export default function HomePage() {
 
   const recommended = continueItems.find(item => item.progress?.status === 'available' && !item.progress?.completed) || continueItems.find(item => item.progress?.status === 'available') || continueItems[0];
 
+  // 1. Calcul des moyennes par compétence à partir des tentatives réelles
+  const getAverageScoreByType = (type: string) => {
+    const filtered = attempts.filter((att) => att.exercise?.type === type);
+    if (filtered.length === 0) return 60; // Valeur par défaut si aucun exercice complété
+    const sum = filtered.reduce((acc, curr) => acc + curr.score, 0);
+    return Math.round(sum / filtered.length);
+  };
+
   const radarData = [
-    { subject: 'Justesse', A: avgAccuracy || 75 },
-    { subject: 'Souffle', A: Math.max(60, (avgAccuracy || 70) - 5) },
-    { subject: 'Rythme', A: Math.max(65, (avgAccuracy || 75) + 2) },
-    { subject: 'Vibrato', A: Math.max(50, (avgAccuracy || 75) - 15) },
-    { subject: 'Puissance', A: Math.max(55, (avgAccuracy || 75) - 8) }
+    { subject: 'Justesse', A: getAverageScoreByType('pitch') },
+    { subject: 'Souffle', A: getAverageScoreByType('breathing') },
+    { subject: 'Rythme', A: getAverageScoreByType('rhythm') },
+    { subject: 'Théorie', A: getAverageScoreByType('quiz') },
+    { subject: 'Stabilité', A: Math.round((getAverageScoreByType('pitch') + getAverageScoreByType('breathing')) / 2) }
   ];
 
-  const activityData = [
-    { name: 'L', XP: Math.round(stats.weekly_xp * 0.08) },
-    { name: 'M', XP: Math.round(stats.weekly_xp * 0.22) },
-    { name: 'M', XP: Math.round(stats.weekly_xp * 0.38) },
-    { name: 'J', XP: Math.round(stats.weekly_xp * 0.55) },
-    { name: 'V', XP: Math.round(stats.weekly_xp * 0.75) },
-    { name: 'S', XP: Math.round(stats.weekly_xp * 0.9) },
-    { name: 'D', XP: stats.weekly_xp }
-  ];
+  // 2. Calcul des XP quotidiens réels cumulés cette semaine (15 XP par exercice complété)
+  const activityData = weekDays.map((wd) => {
+    const dayAttempts = attempts.filter((att) => {
+      if (!att.created_at) return false;
+      const attDate = new Date(att.created_at);
+      const compDate = new Date(today);
+      compDate.setDate(wd.date);
+      return attDate.getDate() === compDate.getDate() && attDate.getMonth() === compDate.getMonth();
+    });
+
+    return {
+      name: wd.label,
+      XP: dayAttempts.length * 15
+    };
+  });
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
