@@ -18,7 +18,7 @@ export default function CommunautePage() {
         ].map((item) => (
           <Link key={item.href} href={item.href}
             className={`flex flex-col items-start gap-3 p-5 rounded-2xl bg-gradient-to-br ${item.color} border hover:shadow-md hover:-translate-y-0.5 transition-all`}>
-            <div className="p-2.5 rounded-xl bg-white/50 backdrop-blur-sm">
+            <div className="p-2.5 rounded-xl bg-white/5 backdrop-blur-md border border-white/10">
               <item.icon className="w-5 h-5" />
             </div>
             <div>

@@ -6,6 +6,7 @@ import { ArrowLeft, ThumbsUp, MessageSquare, Share2, Flag, Send } from 'lucide-r
 import { supabase, type ForumPost, type ForumReply } from '@/lib/supabase';
 import { useAuth } from '@/hooks/use-auth';
 import { useLang } from '@/hooks/use-lang';
+import { cn } from '@/lib/utils';
 
 function timeAgo(dateStr: string, lang: 'fr' | 'en') {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -78,34 +79,34 @@ export default function DiscussionPage({ params }: { params: { id: string } }) {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-3xl mx-auto">
-      <Link href="/communaute/forum" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+      <Link href="/communaute/forum" className="inline-flex items-center gap-2 text-sm text-white/55 hover:text-white transition-colors">
         <ArrowLeft className="w-4 h-4" /> {lang === 'fr' ? 'Retour au Forum' : 'Back to Forum'}
       </Link>
 
       {/* Topic */}
-      <div className="bg-white rounded-2xl border border-border p-6 shadow-sm">
+      <div className="rounded-2xl border p-6 shadow-sm bg-white/5" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
         <div className="flex items-start gap-4 mb-4">
-          <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-primary to-secondary text-white text-sm font-bold grid place-items-center shrink-0">
+          <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-emerald-500/20 to-emerald-400/20 border border-emerald-500/30 text-emerald-400 text-sm font-bold grid place-items-center shrink-0">
             {post.author_name.slice(0, 2).toUpperCase()}
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-bold text-sm text-foreground">{post.author_name}</span>
-              <span className="text-[10px] text-muted-foreground">{timeAgo(post.created_at, lang)}</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">{post.category}</span>
+              <span className="font-bold text-sm text-white">{post.author_name}</span>
+              <span className="text-[10px] text-white/40">{timeAgo(post.created_at, lang)}</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{post.category}</span>
             </div>
-            <h1 className="font-display text-xl font-bold text-foreground mb-4">{post.title}</h1>
-            <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-line">{post.content}</p>
+            <h1 className="font-display text-xl font-bold text-white mb-4">{post.title}</h1>
+            <p className="text-sm text-white/80 leading-relaxed whitespace-pre-line">{post.content}</p>
           </div>
         </div>
-        <div className="flex items-center gap-4 pt-4 border-t border-border">
-          <button onClick={handleLike} className={`flex items-center gap-1.5 text-xs font-semibold transition-colors ${liked ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}>
+        <div className="flex items-center gap-4 pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+          <button onClick={handleLike} className={`flex items-center gap-1.5 text-xs font-semibold transition-colors ${liked ? 'text-emerald-450' : 'text-white/40 hover:text-emerald-450'}`}>
             <ThumbsUp className="w-4 h-4" /> {post.likes}
           </button>
-          <button className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-primary transition-colors">
+          <button className="flex items-center gap-1.5 text-xs font-semibold text-white/40 hover:text-white transition-colors">
             <Share2 className="w-4 h-4" /> {lang === 'fr' ? 'Partager' : 'Share'}
           </button>
-          <button className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-destructive transition-colors ml-auto">
+          <button className="flex items-center gap-1.5 text-xs font-semibold text-white/40 hover:text-destructive transition-colors ml-auto">
             <Flag className="w-4 h-4" /> {lang === 'fr' ? 'Signaler' : 'Report'}
           </button>
         </div>
@@ -113,27 +114,30 @@ export default function DiscussionPage({ params }: { params: { id: string } }) {
 
       {/* Replies */}
       <div className="space-y-4">
-        <h2 className="font-bold text-sm text-foreground">
+        <h2 className="font-bold text-sm text-white">
           {replies.length} {lang === 'fr' ? 'Réponses' : 'Replies'}
         </h2>
         {replies.map(r => (
-          <div key={r.id} className={`bg-white rounded-2xl border p-5 shadow-sm ${r.is_accepted ? 'border-green-300 bg-green-50/30' : 'border-border'}`}>
+          <div key={r.id} className={cn('rounded-2xl border p-5 shadow-sm bg-white/5',
+            r.is_accepted ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-white/5'
+          )}
+          style={{ borderColor: r.is_accepted ? undefined : 'rgba(255,255,255,0.08)' }}>
             {r.is_accepted && (
-              <div className="flex items-center gap-2 text-green-600 text-xs font-bold mb-3">
-                <span className="w-4 h-4 rounded-full bg-green-500 text-white grid place-items-center text-[10px]">✓</span>
+              <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold mb-3">
+                <span className="w-4 h-4 rounded-full bg-emerald-500 text-[#071008] grid place-items-center text-[10px] font-black">✓</span>
                 {t('forum_best_answer')}
               </div>
             )}
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-primary/70 to-secondary/70 text-white text-xs font-bold grid place-items-center shrink-0">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-500/20 to-emerald-400/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold grid place-items-center shrink-0">
                 {r.author_name.slice(0, 2).toUpperCase()}
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="font-bold text-sm text-foreground">{r.author_name}</span>
-                  <span className="text-[10px] text-muted-foreground">{timeAgo(r.created_at, lang)}</span>
+                  <span className="font-bold text-sm text-white">{r.author_name}</span>
+                  <span className="text-[10px] text-white/40">{timeAgo(r.created_at, lang)}</span>
                 </div>
-                <p className="text-sm text-foreground/80 leading-relaxed">{r.content}</p>
+                <p className="text-sm text-white/80 leading-relaxed">{r.content}</p>
               </div>
             </div>
           </div>
@@ -141,11 +145,11 @@ export default function DiscussionPage({ params }: { params: { id: string } }) {
       </div>
 
       {/* Reply box */}
-      <div className="bg-white rounded-2xl border border-border p-5 shadow-sm">
-        <h3 className="font-bold text-sm text-foreground mb-4">{t('forum_your_reply')}</h3>
+      <div className="rounded-2xl border p-5 shadow-sm bg-white/5" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+        <h3 className="font-bold text-sm text-white mb-4">{t('forum_your_reply')}</h3>
         {!user ? (
-          <div className="text-sm text-muted-foreground text-center py-4">
-            <Link href="/auth" className="text-primary font-semibold hover:underline">
+          <div className="text-sm text-white/40 text-center py-4">
+            <Link href="/auth" className="text-emerald-400 font-semibold hover:underline">
               {lang === 'fr' ? 'Connectez-vous pour répondre' : 'Sign in to reply'}
             </Link>
           </div>
@@ -153,11 +157,12 @@ export default function DiscussionPage({ params }: { params: { id: string } }) {
           <form onSubmit={handleReply}>
             <textarea value={reply} onChange={e => setReply(e.target.value)} rows={4}
               placeholder={lang === 'fr' ? 'Partagez votre expérience ou votre conseil...' : 'Share your experience or advice...'}
-              className="w-full px-4 py-3 rounded-xl border border-border bg-muted/30 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 resize-none transition-all placeholder:text-muted-foreground"
+              className="w-full px-4 py-3 rounded-xl border bg-white/5 text-sm text-white outline-none focus:border-emerald-500/50 resize-none transition-all placeholder:text-white/30"
+              style={{ borderColor: 'rgba(255,255,255,0.08)' }}
             />
             <div className="flex justify-end mt-3">
               <button type="submit" disabled={sending || !reply.trim()}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity shadow-sm disabled:opacity-50">
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 text-[#071008] text-sm font-semibold hover:bg-emerald-400 transition-colors shadow-sm disabled:opacity-50">
                 <Send className="w-4 h-4" /> {t('forum_reply_btn')}
               </button>
             </div>

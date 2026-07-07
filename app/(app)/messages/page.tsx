@@ -6,6 +6,7 @@ import { supabase, type Conversation, type Message, type UserProfile } from '@/l
 import { useAuth } from '@/hooks/use-auth';
 import { useLang } from '@/hooks/use-lang';
 import { cn } from '@/lib/utils';
+import { playNotificationSound } from '@/lib/audio';
 
 type Contact = {
   id: string; // conversation_id
@@ -28,6 +29,9 @@ export default function MessagesPage() {
   const [allProfiles, setAllProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const activeContactIdRef = useRef<string | null>(null);
+  activeContactIdRef.current = activeContact?.id || null;
 
   // Load all profiles & conversations
   useEffect(() => {
@@ -99,8 +103,26 @@ export default function MessagesPage() {
         { event: 'INSERT', table: 'messages' },
         (payload: any) => {
           const newMsg = payload.new as Message;
-          if (activeContact && newMsg.conversation_id === activeContact.id) {
+          if (newMsg.sender_id !== user.id) {
+            playNotificationSound();
+          }
+
+          // Update lastMsg & time in contact list dynamically
+          setContacts(prev => prev.map(c => {
+            if (c.id === newMsg.conversation_id) {
+              return {
+                ...c,
+                lastMsg: newMsg.content,
+                time: new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                unread: activeContactIdRef.current === newMsg.conversation_id ? 0 : c.unread + 1
+              };
+            }
+            return c;
+          }));
+
+          if (activeContactIdRef.current === newMsg.conversation_id) {
             setMessages((prev) => [...prev, newMsg]);
+            scrollToBottom();
           }
         }
       )
@@ -109,7 +131,7 @@ export default function MessagesPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, activeContact?.id]);
+  }, [user]);
 
   // Load messages for active conversation
   useEffect(() => {
@@ -123,6 +145,15 @@ export default function MessagesPage() {
         .order('created_at', { ascending: true });
       
       setMessages(data || []);
+      
+      // Reset unread count for active conversation in list
+      setContacts(prev => prev.map(c => {
+        if (c.id === activeContact.id) {
+          return { ...c, unread: 0 };
+        }
+        return c;
+      }));
+
       scrollToBottom();
     };
 
@@ -207,43 +238,59 @@ export default function MessagesPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-5rem)] flex overflow-hidden rounded-2xl border border-border bg-card shadow-sm -mt-6 -mx-4 md:-mx-8">
+    <div className="h-[calc(100vh-5rem)] flex overflow-hidden rounded-2xl border shadow-sm -mt-6 -mx-4 md:-mx-8"
+      style={{
+        background: 'rgba(255, 255, 255, 0.02)',
+        borderColor: 'rgba(255, 255, 255, 0.08)'
+      }}>
       {/* Left: Contact list */}
-      <div className="w-72 flex-shrink-0 border-r border-border flex flex-col bg-white">
-        <div className="p-4 border-b border-border">
-          <h2 className="font-bold text-sm text-foreground mb-3">{t('msg_title')}</h2>
+      <div className="w-72 flex-shrink-0 border-r flex flex-col"
+        style={{
+          background: 'rgba(255, 255, 255, 0.015)',
+          borderColor: 'rgba(255, 255, 255, 0.08)'
+        }}>
+        <div className="p-4 border-b" style={{ borderColor: 'rgba(255, 255, 255, 0.08)' }}>
+          <h2 className="font-bold text-sm text-white mb-3">{t('msg_title')}</h2>
           <div className="relative">
-            <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-white/40 absolute left-3 top-1/2 -translate-y-1/2" />
             <input type="text" placeholder={t('msg_search')}
-              className="w-full pl-9 pr-4 py-2 bg-muted rounded-xl text-xs border-none outline-none text-foreground placeholder:text-muted-foreground"
+              className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs outline-none text-white placeholder:text-white/30 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all"
             />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="p-4 text-xs text-muted-foreground text-center">{t('loading')}</div>
+            <div className="p-4 text-xs text-white/40 text-center">{t('loading')}</div>
           ) : contacts.length === 0 ? (
-            <div className="p-4 text-xs text-muted-foreground text-center">
+            <div className="p-4 text-xs text-white/40 text-center">
               {lang === 'fr' ? 'Aucune conversation.' : 'No conversations.'}
             </div>
           ) : (
             contacts.map((c) => (
               <button key={c.id} onClick={() => setActiveContact(c)}
-                className={cn('w-full flex items-start gap-3 px-4 py-3 hover:bg-muted/50 transition-colors text-left border-b border-border/40',
-                  activeContact?.id === c.id && 'bg-primary/5 border-l-2 border-l-primary'
-                )}>
+                className={cn('w-full flex items-start gap-3 px-4 py-3 hover:bg-white/[0.04] transition-colors text-left border-b',
+                  activeContact?.id === c.id ? 'bg-emerald-500/10 border-l-2 border-l-emerald-400' : 'border-transparent'
+                )}
+                style={{ borderBottomColor: 'rgba(255, 255, 255, 0.05)' }}>
                 <div className="relative shrink-0">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-primary to-secondary text-white text-xs font-bold grid place-items-center">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-emerald-500/20 to-emerald-400/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold grid place-items-center">
                     {c.avatar}
                   </div>
-                  {c.online && <Circle className="w-2.5 h-2.5 fill-green-500 text-green-500 absolute bottom-0 right-0" />}
+                  {c.online && <Circle className="w-2.5 h-2.5 fill-emerald-500 text-emerald-500 absolute bottom-0 right-0" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center">
-                    <span className="font-semibold text-xs text-foreground truncate">{c.name}</span>
-                    <span className="text-[10px] text-muted-foreground shrink-0 ml-2">{c.time}</span>
+                    <span className="font-semibold text-xs text-white truncate">{c.name}</span>
+                    <span className="text-[10px] text-white/40 shrink-0 ml-2">{c.time}</span>
                   </div>
-                  <p className="text-[11px] text-muted-foreground truncate mt-0.5">{c.lastMsg}</p>
+                  <div className="flex items-center justify-between gap-1 mt-0.5">
+                    <p className="text-[11px] text-white/55 truncate flex-1">{c.lastMsg}</p>
+                    {c.unread > 0 && (
+                      <span className="w-4.5 h-4 px-1 rounded-full bg-emerald-500 text-[10px] font-extrabold text-[#071008] flex items-center justify-center shrink-0">
+                        {c.unread}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </button>
             ))
@@ -252,23 +299,28 @@ export default function MessagesPage() {
       </div>
 
       {/* Center: Thread */}
-      <div className="flex-1 flex flex-col bg-background min-w-0 border-r border-border">
+      <div className="flex-1 flex flex-col min-w-0 border-r"
+        style={{ borderColor: 'rgba(255, 255, 255, 0.08)' }}>
         {activeContact ? (
           <>
-            <div className="h-14 border-b border-border px-5 flex items-center justify-between bg-white flex-shrink-0">
+            <div className="h-14 px-5 flex items-center justify-between flex-shrink-0 border-b"
+              style={{
+                background: 'rgba(255, 255, 255, 0.02)',
+                borderColor: 'rgba(255, 255, 255, 0.08)'
+              }}>
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-secondary text-white text-xs font-bold grid place-items-center">{activeContact.avatar}</div>
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500/20 to-emerald-400/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold grid place-items-center">{activeContact.avatar}</div>
                 <div>
-                  <div className="font-bold text-sm text-foreground">{activeContact.name}</div>
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="font-bold text-sm text-white">{activeContact.name}</div>
+                  <div className="text-[10px] text-white/40">
                     {activeContact.online ? t('msg_online') : t('msg_offline')}
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground"><Phone className="w-4 h-4" /></button>
-                <button className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground"><Video className="w-4 h-4" /></button>
-                <button className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground"><MoreHorizontal className="w-4 h-4" /></button>
+                <button className="p-2 rounded-xl hover:bg-white/5 text-white/60 hover:text-white transition-colors"><Phone className="w-4 h-4" /></button>
+                <button className="p-2 rounded-xl hover:bg-white/5 text-white/60 hover:text-white transition-colors"><Video className="w-4 h-4" /></button>
+                <button className="p-2 rounded-xl hover:bg-white/5 text-white/60 hover:text-white transition-colors"><MoreHorizontal className="w-4 h-4" /></button>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -277,13 +329,20 @@ export default function MessagesPage() {
                 const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 return (
                   <div key={msg.id} className={cn('flex items-end gap-2', mine && 'flex-row-reverse')}>
-                    <div className={cn('max-w-xs px-4 py-2.5 rounded-2xl text-sm shadow-sm',
-                      mine ? 'bg-primary text-primary-foreground rounded-br-sm' : 'bg-white border border-border text-foreground rounded-bl-sm'
-                    )}>
+                    <div className={cn('max-w-xs px-4 py-2.5 rounded-2xl text-sm',
+                      mine 
+                        ? 'text-white rounded-br-sm' 
+                        : 'text-white rounded-bl-sm'
+                    )}
+                    style={{
+                      background: mine ? 'linear-gradient(135deg, #10B981, #059669)' : 'rgba(255,255,255,0.04)',
+                      border: mine ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                      boxShadow: mine ? '0 4px 16px rgba(16,185,129,0.15)' : 'none'
+                    }}>
                       <p>{msg.content}</p>
                       <div className={cn('flex items-center gap-1 mt-1', mine ? 'justify-end' : 'justify-start')}>
-                        <span className={cn('text-[10px]', mine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>{time}</span>
-                        {mine && <CheckCheck className="w-3 h-3 text-primary-foreground/70" />}
+                        <span className={cn('text-[10px]', mine ? 'text-white/70' : 'text-white/40')}>{time}</span>
+                        {mine && <CheckCheck className="w-3 h-3 text-white/70" />}
                       </div>
                     </div>
                   </div>
@@ -291,36 +350,43 @@ export default function MessagesPage() {
               })}
               <div ref={messagesEndRef} />
             </div>
-            <div className="border-t border-border p-4 bg-white flex-shrink-0">
-              <div className="flex items-center gap-3 bg-muted rounded-2xl px-4 py-2.5">
-                <button className="text-muted-foreground hover:text-primary transition-colors"><Paperclip className="w-4 h-4" /></button>
+            <div className="p-4 flex-shrink-0 border-t"
+              style={{
+                background: 'rgba(255, 255, 255, 0.02)',
+                borderColor: 'rgba(255, 255, 255, 0.08)'
+              }}>
+              <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl px-4 py-2.5">
+                <button className="text-white/40 hover:text-emerald-400 transition-colors"><Paperclip className="w-4 h-4" /></button>
                 <input type="text" value={messageText} onChange={(e) => setMessageText(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                   placeholder={t('msg_write')}
-                  className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground text-foreground"
+                  className="flex-1 bg-transparent text-sm outline-none placeholder:text-white/30 text-white"
                 />
-                <button className="text-muted-foreground hover:text-primary transition-colors"><Smile className="w-4 h-4" /></button>
-                <button onClick={handleSendMessage} className="w-8 h-8 rounded-xl bg-primary text-primary-foreground grid place-items-center hover:opacity-90 transition-opacity shrink-0">
+                <button className="text-white/40 hover:text-emerald-400 transition-colors"><Smile className="w-4 h-4" /></button>
+                <button onClick={handleSendMessage} className="w-8 h-8 rounded-xl bg-emerald-500 text-[#071008] grid place-items-center hover:bg-emerald-400 transition-colors shrink-0">
                   <Send className="w-4 h-4" />
                 </button>
               </div>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center p-8 text-center text-sm text-muted-foreground">
+          <div className="flex-1 flex items-center justify-center p-8 text-center text-sm text-white/40">
             {lang === 'fr' ? 'Sélectionnez un membre pour démarrer une conversation.' : 'Select a member to start a conversation.'}
           </div>
         )}
       </div>
 
       {/* Right: Members List (Start new conversation) */}
-      <div className="hidden lg:flex w-52 flex-shrink-0 flex-col bg-white">
-        <div className="p-4 border-b border-border">
-          <h3 className="font-bold text-xs text-foreground">{t('msg_filter_members')}</h3>
+      <div className="hidden lg:flex w-52 flex-shrink-0 flex-col"
+        style={{
+          background: 'rgba(255, 255, 255, 0.015)'
+        }}>
+        <div className="p-4 border-b" style={{ borderColor: 'rgba(255, 255, 255, 0.08)' }}>
+          <h3 className="font-bold text-xs text-white/70">{t('msg_filter_members')}</h3>
         </div>
         <div className="flex-1 overflow-y-auto p-3 space-y-0.5">
           {allProfiles.length === 0 ? (
-            <div className="text-[10px] text-muted-foreground p-2 text-center">
+            <div className="text-[10px] text-white/40 p-2 text-center">
               {lang === 'fr' ? 'Aucun autre membre inscrit.' : 'No other registered members.'}
             </div>
           ) : (
@@ -328,13 +394,13 @@ export default function MessagesPage() {
               const name = p.display_name || 'Utilisateur';
               return (
                 <div key={p.id} onClick={() => startNewConversation(p)}
-                  className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-muted/50 transition-colors cursor-pointer group">
+                  className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/[0.04] transition-colors cursor-pointer group">
                   <div className="relative shrink-0">
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-primary/70 to-secondary/70 text-white text-[9px] font-bold grid place-items-center">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-emerald-500/20 to-emerald-400/20 border border-emerald-500/30 text-emerald-400 text-[9px] font-bold grid place-items-center">
                       {name.slice(0, 2).toUpperCase()}
                     </div>
                   </div>
-                  <span className="text-xs font-medium text-foreground truncate group-hover:text-primary transition-colors">{name}</span>
+                  <span className="text-xs font-medium text-white/80 truncate group-hover:text-emerald-400 transition-colors">{name}</span>
                 </div>
               );
             })
