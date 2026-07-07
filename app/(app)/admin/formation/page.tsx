@@ -20,6 +20,8 @@ export default function AdminFormationPage() {
   const [modules, setModules] = useState<TrainingModule[]>([]);
   const [assignments, setAssignments] = useState<TrainingAssignment[]>([]);
   const [members, setMembers] = useState<UserProfile[]>([]);
+  const [hymns, setHymns] = useState<{ id: string; title: string; number: number }[]>([]);
+  const [lessons, setLessons] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -30,22 +32,26 @@ export default function AdminFormationPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Formulaire module inline
-  const [moduleForm, setModuleForm] = useState({ title: '', content: '', xp: '20' });
+  const [moduleForm, setModuleForm] = useState({ title: '', content: '', xp: '20', hymnId: '', lessonId: '' });
 
   // Affectation
   const [assignUserId, setAssignUserId] = useState('');
 
   const load = useCallback(async () => {
-    const [pathRes, modRes, assignRes, memRes] = await Promise.all([
+    const [pathRes, modRes, assignRes, memRes, hymnRes, lessonRes] = await Promise.all([
       supabase.from('training_paths').select('*').order('created_at', { ascending: false }),
       supabase.from('training_modules').select('*').order('sort_order'),
       supabase.from('training_assignments').select('*'),
       supabase.from('user_profiles').select('*').order('display_name'),
+      supabase.from('hymns').select('id, title, number').order('number'),
+      supabase.from('lessons').select('id, name').order('name'),
     ]);
     setPaths(pathRes.data || []);
     setModules(modRes.data || []);
     setAssignments(assignRes.data || []);
     setMembers((memRes.data as UserProfile[]) || []);
+    setHymns(hymnRes.data || []);
+    setLessons(lessonRes.data || []);
     setLoading(false);
   }, []);
 
@@ -93,8 +99,10 @@ export default function AdminFormationPage() {
       content: moduleForm.content.trim() || null,
       xp_reward: Number(moduleForm.xp) || 20,
       sort_order: pathModules.length,
+      hymn_id: moduleForm.hymnId || null,
+      lesson_id: moduleForm.lessonId || null,
     });
-    setModuleForm({ title: '', content: '', xp: '20' });
+    setModuleForm({ title: '', content: '', xp: '20', hymnId: '', lessonId: '' });
     load();
   };
 
@@ -217,7 +225,19 @@ export default function AdminFormationPage() {
                               <span className="grid place-items-center w-6 h-6 rounded-md bg-primary/10 text-primary text-xs font-bold shrink-0">{i + 1}</span>
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-semibold text-foreground truncate">{m.title}</p>
-                                <p className="text-[10px] text-muted-foreground">+{m.xp_reward} XP</p>
+                                <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                  <span className="text-[10px] text-muted-foreground">+{m.xp_reward} XP</span>
+                                  {m.hymn_id && (
+                                    <Badge variant="outline" className="text-[8px] bg-sky-500/10 text-sky-400 border-sky-500/20 py-0 px-1 font-medium">
+                                      Cantique lié
+                                    </Badge>
+                                  )}
+                                  {m.lesson_id && (
+                                    <Badge variant="outline" className="text-[8px] bg-emerald-500/10 text-emerald-400 border-emerald-500/20 py-0 px-1 font-medium">
+                                      Cours lié
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
                               <button
                                 type="button"
@@ -248,7 +268,39 @@ export default function AdminFormationPage() {
                           rows={2}
                           className={inputCls}
                         />
-                        <div className="flex items-center gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className={labelCls}>Lier un cantique (optionnel)</label>
+                            <select
+                              value={moduleForm.hymnId}
+                              onChange={e => setModuleForm(f => ({ ...f, hymnId: e.target.value }))}
+                              className={inputCls}
+                            >
+                              <option value="">— Aucun cantique —</option>
+                              {hymns.map(h => (
+                                <option key={h.id} value={h.id}>
+                                  N°{h.number} - {h.title}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className={labelCls}>Lier un cours / exercice (optionnel)</label>
+                            <select
+                              value={moduleForm.lessonId}
+                              onChange={e => setModuleForm(f => ({ ...f, lessonId: e.target.value }))}
+                              className={inputCls}
+                            >
+                              <option value="">— Aucun cours / exercice —</option>
+                              {lessons.map(l => (
+                                <option key={l.id} value={l.id}>
+                                  {l.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 pt-1">
                           <input
                             type="number"
                             value={moduleForm.xp}

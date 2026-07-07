@@ -5,6 +5,7 @@ import { Moon, Sun, LogOut, Bell, Music, Flame } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/hooks/use-auth';
+import { playNotificationSound } from '@/lib/audio';
 import Link from 'next/link';
 import type { ChoirStats, Announcement } from '@/lib/types';
 import { VOICE_LABELS, ROLE_LABELS, type Role, type VoicePart } from '@/lib/types';
@@ -21,8 +22,25 @@ export function TopBar() {
     if (!user) return;
     supabase.from('choir_stats').select('*').eq('user_id', user.id).maybeSingle()
       .then(({ data }) => setStats(data));
-    supabase.from('announcements').select('*').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(5)
-      .then(({ data }) => setAnnouncements(data || []));
+
+    const loadAnnouncements = () => {
+      supabase.from('announcements').select('*').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(5)
+        .then(({ data }) => setAnnouncements(data || []));
+    };
+
+    loadAnnouncements();
+
+    const channel = supabase
+      .channel('announcements-topbar')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, () => {
+        loadAnnouncements();
+        playNotificationSound();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   useEffect(() => {
@@ -39,6 +57,11 @@ export function TopBar() {
   const userInitial = userName.charAt(0).toUpperCase();
   const voice = userProfile?.voice_part as VoicePart | null;
   const role = (userProfile?.role || 'choriste') as Role;
+
+  const handleNotifClick = () => {
+    setNotifOpen(!notifOpen);
+    playNotificationSound();
+  };
 
   return (
     <header className="sticky top-0 z-40 h-16 bg-sidebar border-b border-sidebar-border text-sidebar-foreground w-full">
@@ -68,7 +91,7 @@ export function TopBar() {
           {/* Notifications / annonces */}
           <div className="relative" id="topbar-notif">
             <button
-              onClick={() => setNotifOpen(!notifOpen)}
+              onClick={handleNotifClick}
               className="relative p-1.5 text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors"
               aria-label="Annonces"
             >

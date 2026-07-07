@@ -268,6 +268,14 @@ function PathCard({
                             <Music className="h-3 w-3" aria-hidden /> Cantique lié
                           </Link>
                         )}
+                        {mod.lesson_id && (
+                          <Link
+                            href={`/lecon/${mod.lesson_id}`}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                          >
+                            <GraduationCap className="h-3 w-3" aria-hidden /> Cours / Exercice lié
+                          </Link>
+                        )}
                       </div>
                     </div>
                     {!done && (

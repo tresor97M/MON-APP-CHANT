@@ -215,6 +215,7 @@ export type TrainingModule = {
   content: string | null;
   resource_url: string | null;
   hymn_id: string | null;
+  lesson_id: string | null;
   xp_reward: number;
   sort_order: number;
 };
