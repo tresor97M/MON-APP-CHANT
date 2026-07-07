@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -13,13 +14,19 @@ import { cn } from '@/lib/utils';
 import { isStaff, canManageRoles } from '@/lib/permissions';
 import { VOICE_LABELS, ROLE_LABELS, type Role, type VoicePart } from '@/lib/types';
 
-/* ─── Bottom Nav items (mobile, max 5) ──────────────────── */
+/* ─── Bottom Nav items (mobile, scrollable) ──────────────── */
 const BOTTOM_NAV = [
-  { href: '/',             label: 'Accueil',    icon: Home },
-  { href: '/cantiques',    label: 'Cantiques',  icon: Music },
-  { href: '/repetitions',  label: 'Répétitions', icon: CalendarDays },
-  { href: '/formation',    label: 'Formation',  icon: GraduationCap },
-  { href: '/coach',        label: 'Coach IA',   icon: Sparkles },
+  { href: '/',             label: 'Accueil',     icon: Home },
+  { href: '/cantiques',    label: 'Cantiques',   icon: Music },
+  { href: '/calendrier',   label: 'Calendrier',  icon: CalendarDays },
+  { href: '/repetitions',  label: 'Répétitions', icon: MicVocal },
+  { href: '/parcours',     label: 'Parcours',    icon: BookOpenCheck },
+  { href: '/formation',    label: 'Formation',   icon: GraduationCap },
+  { href: '/coach',        label: 'Coach IA',    icon: Sparkles },
+  { href: '/ligue',        label: 'Classement',  icon: Trophy },
+  { href: '/communaute',   label: 'Communauté',  icon: Users },
+  { href: '/messages',     label: 'Messages',    icon: Mail },
+  { href: '/profil',       label: 'Profil',      icon: User },
 ];
 
 /* ─── Desktop sidebar sections (unchanged logic) ─────────── */
@@ -203,10 +210,25 @@ export function Sidebar() {
 /* ─── Mobile Bottom Navigation ───────────────────────────── */
 function BottomNav() {
   const pathname = usePathname();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (containerRef.current) {
+      const activeEl = containerRef.current.querySelector('[data-active="true"]');
+      if (activeEl) {
+        activeEl.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'center',
+        });
+      }
+    }
+  }, [pathname]);
 
   return (
     <nav
-      className="md:hidden fixed bottom-0 inset-x-0 z-50 glass-nav flex items-center justify-around"
+      ref={containerRef}
+      className="md:hidden fixed bottom-0 inset-x-0 z-50 glass-nav flex items-center justify-start gap-1 px-4 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory"
       style={{
         height: 'calc(3.75rem + env(safe-area-inset-bottom))',
         paddingBottom: 'env(safe-area-inset-bottom)',
@@ -218,7 +240,8 @@ function BottomNav() {
           <Link
             key={item.href}
             href={item.href}
-            className="flex flex-col items-center gap-0.5 px-3 py-2 transition-all duration-200 active:scale-90"
+            data-active={active}
+            className="flex flex-col items-center gap-0.5 px-3 py-2 transition-all duration-200 active:scale-90 flex-shrink-0 snap-center"
           >
             <div
               className="w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-200"
