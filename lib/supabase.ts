@@ -70,9 +70,33 @@ export type Conversation = {
   last_message: string | null; last_message_at: string; created_at: string;
 };
 
+export type MessageType = 'text' | 'image' | 'audio' | 'file' | 'voice_note';
+
 export type Message = {
   id: string; conversation_id: string; sender_id: string;
   content: string; read: boolean; created_at: string;
+  message_type: MessageType;
+  file_url: string | null;
+  file_name: string | null;
+  file_mime: string | null;
+};
+
+export type GroupConversation = {
+  id: string; name: string; avatar: string;
+  description: string | null; created_by: string;
+  last_message: string | null; last_message_at: string; created_at: string;
+};
+
+export type GroupMember = {
+  id: string; group_id: string; user_id: string;
+  display_name: string; role: 'admin' | 'member'; joined_at: string;
+};
+
+export type GroupMessage = {
+  id: string; group_id: string; sender_id: string; sender_name: string;
+  content: string; message_type: MessageType;
+  file_url: string | null; file_name: string | null; file_mime: string | null;
+  created_at: string;
 };
 
 export type ForumPost = {
