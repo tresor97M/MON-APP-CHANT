@@ -18,8 +18,8 @@ const BOTTOM_NAV = [
   { href: '/',             label: 'Accueil',    icon: Home },
   { href: '/cantiques',    label: 'Cantiques',  icon: Music },
   { href: '/repetitions',  label: 'Répétitions', icon: CalendarDays },
+  { href: '/formation',    label: 'Formation',  icon: GraduationCap },
   { href: '/coach',        label: 'Coach IA',   icon: Sparkles },
-  { href: '/account',      label: 'Profil',     icon: User },
 ];
 
 /* ─── Desktop sidebar sections (unchanged logic) ─────────── */
