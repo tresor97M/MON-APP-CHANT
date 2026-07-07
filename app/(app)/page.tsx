@@ -4,16 +4,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Flame, Music, CalendarDays, GraduationCap, ChevronRight, Award,
-  Mic2, CheckCircle2, Clock, Sparkles, Trophy, Bell,
+  Mic2, CheckCircle2, Clock, Sparkles, Trophy, Bell, XCircle, HelpCircle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/use-auth';
+import { cn } from '@/lib/utils';
 import {
   VOICE_LABELS, LEARNING_STATUS_LABELS, OCCASION_LABELS,
   type Hymn, type Rehearsal, type HymnScheduleEntry, type RehearsalRsvp,
   type TrainingAssignment, type SkillGap,
 } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
 function fmtDate(d: string) {
@@ -105,6 +107,30 @@ export default function HomePage() {
 
   const rsvpFor = useMemo(() => new Map(rsvps.map(r => [r.rehearsal_id, r.response])), [rsvps]);
   const learningCount = hymns.filter(h => h.learning_status === 'en_apprentissage').length;
+
+  const handleRsvp = async (rehearsalId: string, response: 'present' | 'peut_etre' | 'absent') => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('rehearsal_rsvps')
+      .upsert(
+        { rehearsal_id: rehearsalId, user_id: user.id, response, updated_at: new Date().toISOString() },
+        { onConflict: 'rehearsal_id,user_id' }
+      )
+      .select()
+      .single();
+    if (data) {
+      setRsvps(prev => {
+        const idx = prev.findIndex(r => r.rehearsal_id === rehearsalId);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = data;
+          return next;
+        } else {
+          return [...prev, data];
+        }
+      });
+    }
+  };
 
   const firstName = profile?.display_name?.split(' ')[0] || user?.email?.split('@')[0] || 'choriste';
   const voice = profile?.voice_part ? VOICE_LABELS[profile.voice_part] : null;
@@ -241,12 +267,12 @@ export default function HomePage() {
                 <p className="font-semibold text-sm" style={{ color: '#fff', fontFamily: 'var(--font-display)' }}>
                   {a.label}
                 </p>
-                {a.href === '/hymns' && (
+                {a.href === '/cantiques' && (
                   <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
                     {learningCount} en cours
                   </p>
                 )}
-                {a.href === '/rehearsals' && (
+                {a.href === '/repetitions' && (
                   <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
                     {rehearsals.length} à venir
                   </p>
@@ -256,7 +282,7 @@ export default function HomePage() {
                     IA personnalisée
                   </p>
                 )}
-                {a.href === '/training' && (
+                {a.href === '/formation' && (
                   <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
                     {assignments.length} formation{assignments.length > 1 ? 's' : ''}
                   </p>
@@ -267,75 +293,179 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Prochaine répétition ── */}
-      {nextRehearsal && (
+      {/* ── Répétitions à venir ── */}
+      {rehearsals.length > 0 && (
         <section className="animate-slide-up" style={{ animationDelay: '0.2s' }}>
-          <h2 className="text-xs font-semibold tracking-widest uppercase mb-3" style={{ color: 'rgba(255,255,255,0.35)' }}>
-            Prochaine répétition
-          </h2>
-          <Link
-            href="/rehearsals"
-            className="flex items-center gap-4 p-4 rounded-2xl transition-all duration-200 active:scale-98"
-            style={{
-              background: 'rgba(96,165,250,0.07)',
-              border: '1px solid rgba(96,165,250,0.15)',
-            }}
-          >
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
-              style={{ background: 'rgba(96,165,250,0.15)' }}>
-              <CalendarDays size={22} style={{ color: '#60A5FA' }} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm truncate" style={{ color: '#fff' }}>
-                {nextRehearsal.title || 'Répétition'}
-              </p>
-              <p className="text-xs mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                <Clock size={10} className="inline mr-1" />
-                {fmtDate(nextRehearsal.rehearsal_date)}
-                {nextRehearsal.location && ` · ${nextRehearsal.location}`}
-              </p>
-              {rsvpFor.get(nextRehearsal.id) && (
-                <div className="mt-1.5 flex items-center gap-1 text-xs" style={{ color: '#4ADE80' }}>
-                  <CheckCircle2 size={11} />
-                  {rsvpFor.get(nextRehearsal.id) === 'present' ? 'Confirmé présent' : 'Réponse enregistrée'}
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.35)' }}>
+              Répétitions à venir
+            </h2>
+            <Link href="/repetitions" className="text-xs font-medium flex items-center gap-0.5" style={{ color: '#60A5FA' }}>
+              Tout voir <ChevronRight size={12} />
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {rehearsals.map((rehearsal) => (
+              <div
+                key={rehearsal.id}
+                className="flex flex-col gap-3 p-4 rounded-3xl transition-all duration-200"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                    style={{ background: 'rgba(96,165,250,0.1)' }}>
+                    <CalendarDays size={20} style={{ color: '#60A5FA' }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate" style={{ color: '#fff' }}>
+                      {rehearsal.title || 'Répétition'}
+                    </p>
+                    <p className="text-xs mt-0.5 truncate" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                      <Clock size={10} className="inline mr-1" />
+                      {fmtDate(rehearsal.rehearsal_date)}
+                      {rehearsal.location && ` · ${rehearsal.location}`}
+                    </p>
+                  </div>
                 </div>
-              )}
-            </div>
-            <ChevronRight size={16} style={{ color: 'rgba(255,255,255,0.3)' }} />
-          </Link>
+
+                {/* RSVP Buttons */}
+                <div className="flex items-center gap-1.5 mt-1 border-t border-white/5 pt-2.5">
+                  <button
+                    onClick={() => handleRsvp(rehearsal.id, 'present')}
+                    className={cn(
+                      "flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all duration-200",
+                      rsvpFor.get(rehearsal.id) === 'present'
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.15)]"
+                        : "bg-white/[0.02] text-white/50 border border-white/[0.05] hover:bg-white/[0.05] hover:text-white/80"
+                    )}
+                  >
+                    <CheckCircle2 size={12} />
+                    Présent
+                  </button>
+
+                  <button
+                    onClick={() => handleRsvp(rehearsal.id, 'peut_etre')}
+                    className={cn(
+                      "flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all duration-200",
+                      rsvpFor.get(rehearsal.id) === 'peut_etre'
+                        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.15)]"
+                        : "bg-white/[0.02] text-white/50 border border-white/[0.05] hover:bg-white/[0.05] hover:text-white/80"
+                    )}
+                  >
+                    <HelpCircle size={12} />
+                    Peut-être
+                  </button>
+
+                  <button
+                    onClick={() => handleRsvp(rehearsal.id, 'absent')}
+                    className={cn(
+                      "flex-1 py-1.5 px-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all duration-200",
+                      rsvpFor.get(rehearsal.id) === 'absent'
+                        ? "bg-rose-500/20 text-rose-400 border border-rose-500/30 shadow-[0_0_12px_rgba(244,63,94,0.15)]"
+                        : "bg-white/[0.02] text-white/50 border border-white/[0.05] hover:bg-white/[0.05] hover:text-white/80"
+                    )}
+                  >
+                    <XCircle size={12} />
+                    Absent
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
-      {/* ── Cantiques à l'étude ── */}
-      {hymns.filter(h => h.learning_status === 'en_apprentissage').length > 0 && (
+      {/* ── Programme à venir ── */}
+      {events.length > 0 && (
         <section className="animate-slide-up" style={{ animationDelay: '0.25s' }}>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              En apprentissage
+              Programme à venir
             </h2>
-            <Link href="/cantiques" className="text-xs font-medium flex items-center gap-0.5" style={{ color: '#4ADE80' }}>
-              Voir tout <ChevronRight size={12} />
+            <Link href="/calendrier" className="text-xs font-medium flex items-center gap-0.5" style={{ color: '#60A5FA' }}>
+              Calendrier complet <ChevronRight size={12} />
             </Link>
           </div>
-          <div className="space-y-2">
-            {hymns.filter(h => h.learning_status === 'en_apprentissage').slice(0, 3).map((hymn) => (
-              <Link
-                key={hymn.id}
-                href={`/cantiques/${hymn.id}`}
-                className="flex items-center gap-3 p-3.5 rounded-2xl transition-all duration-200 active:scale-98"
-                style={{ background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.1)' }}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {events.map((e) => (
+              <div
+                key={e.id}
+                className="p-3.5 rounded-2xl transition-all duration-200"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                }}
               >
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                  style={{ background: 'rgba(74,222,128,0.12)' }}>
-                  <Music size={16} style={{ color: '#4ADE80' }} />
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] uppercase font-bold py-0.5 px-2 rounded-md"
+                    style={{
+                      background: 'rgba(96,165,250,0.12)',
+                      color: '#60A5FA',
+                      border: '1px solid rgba(96,165,250,0.15)',
+                    }}
+                  >
+                    {OCCASION_LABELS[e.occasion] || e.occasion}
+                  </Badge>
+                  <span className="text-[10px] ml-auto font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                    {fmtDate(e.scheduled_date)}
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate" style={{ color: '#fff' }}>{hymn.title}</p>
-                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                    {hymn.musical_key && `Ton ${hymn.musical_key} · `}{hymn.tempo ? `${hymn.tempo} BPM` : ''}
+                <p className="font-semibold text-sm truncate" style={{ color: '#fff' }}>
+                  {e.hymns?.title || e.notes || 'Programme'}
+                </p>
+                {e.hymns?.number && (
+                  <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                    Cantique n°{e.hymns.number}
                   </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Répertoire récent ── */}
+      {hymns.length > 0 && (
+        <section className="animate-slide-up" style={{ animationDelay: '0.3s' }}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-semibold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.35)' }}>
+              Répertoire récent
+            </h2>
+            <Link href="/cantiques" className="text-xs font-medium flex items-center gap-0.5" style={{ color: '#4ADE80' }}>
+              Tout le répertoire <ChevronRight size={12} />
+            </Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {hymns.map((h) => (
+              <Link
+                key={h.id}
+                href={`/cantiques/${h.id}`}
+                className="block p-3.5 rounded-2xl transition-all duration-200 active:scale-98 hover:bg-white/[0.05]"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold text-sm truncate" style={{ color: '#fff' }}>
+                    {h.number ? `${h.number}. ` : ''}{h.title}
+                  </p>
+                  <Sparkles
+                    size={14}
+                    className="shrink-0 mt-0.5"
+                    style={{
+                      color: h.learning_status === 'maitrise' || h.learning_status === 'repertoire_actif' ? '#F59E0B' : 'rgba(255,255,255,0.15)'
+                    }}
+                  />
                 </div>
-                <ChevronRight size={14} style={{ color: 'rgba(255,255,255,0.25)' }} />
+                <p className="text-xs mt-1.5 font-medium" style={{ color: h.learning_status === 'maitrise' ? '#4ADE80' : h.learning_status === 'en_apprentissage' ? '#60A5FA' : 'rgba(255,255,255,0.45)' }}>
+                  {LEARNING_STATUS_LABELS[h.learning_status] || h.learning_status}
+                </p>
               </Link>
             ))}
           </div>
