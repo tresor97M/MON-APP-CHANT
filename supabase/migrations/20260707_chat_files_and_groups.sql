@@ -118,3 +118,22 @@ CREATE POLICY "Allow public select from chat-files"
 ON storage.objects FOR SELECT TO public
 USING (bucket_id = 'chat-files');
 
+-- ============ MEMBERS VALIDATION / MANAGEMENT POLICY UPDATE ============
+-- Autoriser les administrateurs (admin) et super-administrateurs (super_admin) à modifier les profils
+DROP POLICY IF EXISTS "super_admin_update_profiles" ON user_profiles;
+DROP POLICY IF EXISTS "admin_and_super_admin_update_profiles" ON user_profiles;
+
+CREATE POLICY "admin_and_super_admin_update_profiles" ON user_profiles
+FOR UPDATE TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM user_profiles
+    WHERE user_profiles.user_id = auth.uid() AND user_profiles.role IN ('admin', 'super_admin')
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM user_profiles
+    WHERE user_profiles.user_id = auth.uid() AND user_profiles.role IN ('admin', 'super_admin')
+  )
+);
