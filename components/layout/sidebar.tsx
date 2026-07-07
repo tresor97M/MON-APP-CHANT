@@ -6,10 +6,11 @@ import {
   Home, Music, CalendarDays, Trophy, Settings,
   GraduationCap, Sparkles, LayoutDashboard,
   BookOpenCheck, Stethoscope, ShieldCheck, Users, ClipboardCheck, Megaphone, Table2, User,
+  Mail, MicVocal,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
-import { isStaff } from '@/lib/permissions';
+import { isStaff, canManageRoles } from '@/lib/permissions';
 import { VOICE_LABELS, ROLE_LABELS, type Role, type VoicePart } from '@/lib/types';
 
 /* ─── Bottom Nav items (mobile, max 5) ──────────────────── */
@@ -41,14 +42,21 @@ function getSections(role: string | undefined, isAdminView: boolean): NavSection
         title: 'DIRECTION',
         items: [
           { href: '/admin', label: 'Tableau de bord', icon: LayoutDashboard },
-          { href: '/admin/repertoire', label: 'Répertoire', icon: Table2 },
-          { href: '/admin/members', label: 'Membres', icon: Users },
-          { href: '/admin/rehearsals', label: 'Répétitions', icon: CalendarDays },
-          { href: '/admin/attendance', label: 'Pointage', icon: ClipboardCheck },
-          { href: '/admin/announcements', label: 'Annonces', icon: Megaphone },
-          { href: '/admin/diagnoses', label: 'Diagnostics', icon: Stethoscope },
-          { href: '/admin/training', label: 'Formations', icon: GraduationCap },
-          ...(role === 'super_admin' ? [{ href: '/admin/roles', label: 'Rôles', icon: ShieldCheck }] : []),
+          { href: '/admin/cantiques', label: 'Cantiques', icon: Music },
+          { href: '/admin/calendrier', label: 'Calendrier (sheet)', icon: Table2 },
+          { href: '/admin/repetitions', label: 'Répétitions & Pointage', icon: ClipboardCheck },
+          { href: '/admin/membres', label: 'Membres & Pupitres', icon: Users },
+          { href: '/admin/evaluations', label: 'Évaluations & Lacunes', icon: Stethoscope },
+          { href: '/admin/formation', label: 'Formation', icon: GraduationCap },
+          { href: '/admin/annonces', label: 'Annonces', icon: Megaphone },
+          ...(canManageRoles(role) ? [{ href: '/admin/acces', label: 'Gestion Accès', icon: ShieldCheck }] : []),
+        ],
+      },
+      {
+        title: 'COMPTE',
+        items: [
+          { href: '/account', label: 'Paramètres', icon: Settings },
+          { href: '/messages', label: 'Messages', icon: Mail },
         ],
       },
     ];
@@ -56,21 +64,31 @@ function getSections(role: string | undefined, isAdminView: boolean): NavSection
 
   return [
     {
+      title: 'ESPACES',
+      items: [
+        { href: '/', label: 'Tableau de bord', icon: Home },
+        ...(staff ? [{ href: '/admin', label: 'Espace Direction', icon: LayoutDashboard }] : []),
+      ],
+    },
+    {
       title: 'CHORALE',
       items: [
-        { href: '/', label: 'Accueil', icon: Home },
-        { href: '/hymns', label: 'Cantiques', icon: Music },
-        { href: '/rehearsals', label: 'Répétitions', icon: CalendarDays },
-        { href: '/training', label: 'Formation', icon: GraduationCap },
-        { href: '/progress', label: 'Progrès', icon: Trophy },
+        { href: '/cantiques', label: 'Répertoire', icon: Music },
+        { href: '/calendrier', label: 'Calendrier', icon: CalendarDays },
+        { href: '/repetitions', label: 'Répétitions', icon: MicVocal },
+        { href: '/formation', label: 'Formation', icon: GraduationCap },
         { href: '/coach', label: 'Coach IA (Bêta)', icon: Sparkles },
-        { href: '/notes', label: 'Mes Partitions', icon: BookOpenCheck },
+        { href: '/ligue', label: 'Classement', icon: Trophy },
+        { href: '/communaute', label: 'Communauté / Forum', icon: Users },
+        { href: '/annonces', label: 'Annonces', icon: Megaphone },
       ],
     },
     {
       title: 'COMPTE',
       items: [
-        { href: '/account', label: 'Mon Profil', icon: Settings },
+        { href: '/profil', label: 'Mon Profil', icon: User },
+        { href: '/account', label: 'Paramètres', icon: Settings },
+        { href: '/messages', label: 'Messages', icon: Mail },
       ],
     },
   ];
