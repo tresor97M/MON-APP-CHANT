@@ -141,20 +141,24 @@ export class WebRTCCallManager {
 
     // Send offer to callee via their channel
     const calleeChannel = supabase.channel(`calls:${calleeId}`);
-    await calleeChannel.subscribe();
-    calleeChannel.send({
-      type: 'broadcast',
-      event: 'call-offer',
-      payload: {
-        callerId: this.opts.localUserId,
-        callerName: this.opts.localUserName,
-        callerAvatar: this.opts.localUserAvatar,
-        callType,
-        offer,
-      },
+    this.outboundChannel = calleeChannel;
+    
+    calleeChannel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        calleeChannel.send({
+          type: 'broadcast',
+          event: 'call-offer',
+          payload: {
+            callerId: this.opts.localUserId,
+            callerName: this.opts.localUserName,
+            callerAvatar: this.opts.localUserAvatar,
+            callType,
+            offer,
+          },
+        });
+      }
     });
 
-    this.outboundChannel = calleeChannel;
     return this.localStream;
   }
 
@@ -188,14 +192,18 @@ export class WebRTCCallManager {
 
     // Send answer to caller via their channel
     const callerChannel = supabase.channel(`calls:${info.callerId}`);
-    await callerChannel.subscribe();
-    callerChannel.send({
-      type: 'broadcast',
-      event: 'call-answer',
-      payload: { answer },
+    this.outboundChannel = callerChannel;
+    
+    callerChannel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        callerChannel.send({
+          type: 'broadcast',
+          event: 'call-answer',
+          payload: { answer },
+        });
+      }
     });
 
-    this.outboundChannel = callerChannel;
     this.opts.onCallConnected();
     return this.localStream;
   }
@@ -205,13 +213,18 @@ export class WebRTCCallManager {
    */
   async rejectCall(callerId: string) {
     const callerChannel = supabase.channel(`calls:${callerId}`);
-    await callerChannel.subscribe();
-    callerChannel.send({
-      type: 'broadcast',
-      event: 'call-hangup',
-      payload: { rejected: true },
+    callerChannel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        callerChannel.send({
+          type: 'broadcast',
+          event: 'call-hangup',
+          payload: { rejected: true },
+        });
+        setTimeout(() => {
+          supabase.removeChannel(callerChannel);
+        }, 1000);
+      }
     });
-    supabase.removeChannel(callerChannel);
   }
 
   /**

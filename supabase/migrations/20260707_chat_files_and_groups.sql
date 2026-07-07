@@ -99,3 +99,22 @@ CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_group_messages_group ON group_messages(group_id);
 CREATE INDEX IF NOT EXISTS idx_group_messages_created ON group_messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_type ON messages(message_type);
+
+-- ============ STORAGE BUCKET & POLICIES ============
+-- Ensure the public 'chat-files' bucket is initialized in storage schema
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('chat-files', 'chat-files', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Policy to allow authenticated users to upload files to 'chat-files'
+DROP POLICY IF EXISTS "Allow authenticated inserts to chat-files" ON storage.objects;
+CREATE POLICY "Allow authenticated inserts to chat-files"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'chat-files');
+
+-- Policy to allow public access to view/download chat attachments
+DROP POLICY IF EXISTS "Allow public select from chat-files" ON storage.objects;
+CREATE POLICY "Allow public select from chat-files"
+ON storage.objects FOR SELECT TO public
+USING (bucket_id = 'chat-files');
+
