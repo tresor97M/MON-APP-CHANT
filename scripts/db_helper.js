@@ -170,6 +170,8 @@ async function run() {
             path_id: p1.id,
             title: '1. Comprendre son diaphragme',
             content: 'Inspirez en gonflant le ventre sans hausser les épaules, puis retenez l\'air pendant 4 secondes.',
+            resource_url: 'https://www.youtube.com/watch?v=kR2gO5LwHBE',
+            lesson_id: '44444444-4444-4444-4444-444444444411',
             xp_reward: 20,
             sort_order: 1
           },
@@ -177,6 +179,8 @@ async function run() {
             path_id: p1.id,
             title: '2. L\'exercice du sifflement continu',
             content: 'Expirez lentement en produisant un son "Ssss" le plus stable et le plus long possible. Visez 10 secondes.',
+            resource_url: 'https://www.youtube.com/watch?v=kR2gO5LwHBE',
+            lesson_id: '44444444-4444-4444-4444-444444444412',
             xp_reward: 25,
             sort_order: 2
           }
@@ -202,6 +206,7 @@ async function run() {
             path_id: p2.id,
             title: '1. Les accords parfaits de base',
             content: 'Maîtrisez les triades majeures et mineures dans les tonalités courantes (Do majeur, Sol majeur, Fa majeur).',
+            resource_url: 'https://www.youtube.com/watch?v=WJ3-F02-F_Y',
             xp_reward: 30,
             sort_order: 1
           },
@@ -209,6 +214,7 @@ async function run() {
             path_id: p2.id,
             title: '2. Transition fluide sous métronome',
             content: 'Entraînez-vous à passer d\'un accord à l\'autre sans temps mort au tempo de 65 BPM.',
+            resource_url: 'https://www.youtube.com/watch?v=WJ3-F02-F_Y',
             xp_reward: 35,
             sort_order: 2
           }
@@ -234,6 +240,7 @@ async function run() {
             path_id: p3.id,
             title: '1. Travailler sur le temps fort',
             content: 'Jouez ou marquez le temps fort (le 1er temps sur une mesure à 4 temps) de manière nette et consistante.',
+            resource_url: 'https://www.youtube.com/watch?v=2_gJ_t49-pM',
             xp_reward: 20,
             sort_order: 1
           },
@@ -241,6 +248,7 @@ async function run() {
             path_id: p3.id,
             title: '2. Les syncopes de base',
             content: 'Découvrez comment accentuer le contretemps pour donner du groove aux cantiques de louange rapide.',
+            resource_url: 'https://www.youtube.com/watch?v=2_gJ_t49-pM',
             xp_reward: 30,
             sort_order: 2
           }

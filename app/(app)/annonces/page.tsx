@@ -72,10 +72,12 @@ export default function AnnoncesPage() {
     load();
   };
 
-  // Filtrer selon le pupitre du choriste (les annonces ciblées ne concernent que leur pupitre)
-  const visible = items.filter(a =>
-    manager || !a.audience_voice || a.audience_voice === profile?.voice_part
-  );
+  // Filtrer selon le pupitre du choriste et la date de publication active
+  const visible = items.filter(a => {
+    const isVoiceMatch = !a.audience_voice || a.audience_voice === profile?.voice_part;
+    const isPublished = !a.publish_at || new Date(a.publish_at) <= new Date();
+    return manager || (isVoiceMatch && isPublished);
+  });
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto animate-fade-in">
