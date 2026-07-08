@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { VoiceAudioPlayer } from '@/components/hymns/voice-audio-player';
 import { PartitionViewer } from '@/components/hymns/partition-viewer';
+import { InteractiveMidiPlayer } from '@/components/hymns/interactive-midi-player';
 
 const PROGRESS_ORDER: HymnProgressStatus[] = ['a_apprendre', 'en_cours', 'appris', 'valide'];
 
@@ -194,6 +195,11 @@ export default function CantiqueDetailPage() {
       <section className="rounded-2xl border border-border bg-card p-6 space-y-3">
         <h2 className="font-display text-lg font-bold text-foreground">Écouter par voix</h2>
         <VoiceAudioPlayer audioFiles={audioFiles} userVoice={userVoice} />
+      </section>
+
+      {/* Synthétiseur MIDI */}
+      <section className="space-y-3">
+        <InteractiveMidiPlayer hymnId={hymn.id} hymnTitle={hymn.title} />
       </section>
 
       {/* Partitions */}
