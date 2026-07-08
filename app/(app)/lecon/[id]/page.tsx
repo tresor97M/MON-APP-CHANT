@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Mic, Check, X, ChevronRight, RotateCcw, Sparkles, Zap, Volume2, Loader2, Brain, Trophy, Lock } from 'lucide-react';
 import { supabase, type Lesson, type Exercise, type Module } from '@/lib/supabase';
 import { useCelebration } from '@/hooks/use-celebration';
+import { useAuth } from '@/hooks/use-auth';
 import { Maestro, getMaestroMessage } from '@/components/maestro';
 import { AudioVisualizer, PulsingOrb } from '@/components/audio-visualizer';
 import { cn } from '@/lib/utils';
@@ -95,9 +96,15 @@ function autoCorrelate(buffer: Float32Array, sampleRate: number): number {
   return -1;
 }
 
+function hzToMidi(hz: number): number {
+  if (hz <= 0) return 0;
+  return 12 * (Math.log(hz / 440) / Math.log(2)) + 69;
+}
+
 export default function LessonPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const { celebrate, playSound } = useCelebration();
+  const { user } = useAuth();
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [moduleData, setModuleData] = useState<Module | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
@@ -329,78 +336,238 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     const width = canvas.width;
     const height = canvas.height;
 
+    // 1. Fond sombre et grille
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = '#0b0f19'; 
+    ctx.fillStyle = '#090d16'; 
     ctx.fillRect(0, 0, width, height);
 
-    const centerY = height / 2;
-    ctx.beginPath();
-    ctx.strokeStyle = '#334155'; 
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([]);
-    ctx.moveTo(0, centerY);
-    ctx.lineTo(width, centerY);
-    ctx.stroke();
-
-    const upperY = centerY - (toleranceCents / 50) * (height / 2);
-    const lowerY = centerY + (toleranceCents / 50) * (height / 2);
-
-    ctx.beginPath();
-    ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)'; 
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
-    ctx.moveTo(0, upperY);
-    ctx.lineTo(width, upperY);
-    ctx.moveTo(0, lowerY);
-    ctx.lineTo(width, lowerY);
-    ctx.stroke();
-
-    ctx.fillStyle = 'rgba(34, 197, 94, 0.05)';
-    ctx.fillRect(0, upperY, width, lowerY - upperY);
-
-    const history = pitchHistoryRef.current;
-    if (history.length > 1) {
-      ctx.setLineDash([]);
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-
-      for (let i = 1; i < history.length; i++) {
-        const p1 = history[i - 1];
-        const p2 = history[i];
-
-        const clamp1 = Math.max(-50, Math.min(50, p1.cents));
-        const clamp2 = Math.max(-50, Math.min(50, p2.cents));
-
-        const y1 = centerY - (clamp1 / 50) * (height / 2);
-        const y2 = centerY - (clamp2 / 50) * (height / 2);
-
-        const x1 = ((i - 1) / 49) * width;
-        const x2 = (i / 49) * width;
-
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.strokeStyle = p2.just ? '#22c55e' : '#f97316'; 
-        ctx.stroke();
-      }
-
-      const lastPoint = history[history.length - 1];
-      const clampLast = Math.max(-50, Math.min(50, lastPoint.cents));
-      const lastY = centerY - (clampLast / 50) * (height / 2);
-      const lastX = ((history.length - 1) / 49) * width;
-
-      ctx.beginPath();
-      ctx.arc(lastX, lastY, 6, 0, 2 * Math.PI);
-      ctx.fillStyle = lastPoint.just ? '#22c55e' : '#f97316';
-      ctx.fill();
+    // Calcul de l'échelle des notes MIDI à afficher
+    const activeRefMidis = refPitchCurve.filter(hz => hz > 0).map(hzToMidi);
+    let minMidi = 60; // Do4 (C4)
+    let maxMidi = 72; // Do5 (C5)
+    
+    if (activeRefMidis.length > 0) {
+      minMidi = Math.min(...activeRefMidis) - 3;
+      maxMidi = Math.max(...activeRefMidis) + 3;
+    } else {
+      const targetHz = getExerciseTargetHz();
+      const targetMidi = hzToMidi(targetHz);
+      minMidi = targetMidi - 5;
+      maxMidi = targetMidi + 5;
     }
-  }, [toleranceCents]);
+    
+    if (maxMidi - minMidi < 8) {
+      const mid = (maxMidi + minMidi) / 2;
+      minMidi = Math.floor(mid - 4);
+      maxMidi = Math.ceil(mid + 4);
+    }
+    
+    const getMidiY = (midi: number) => {
+      const range = maxMidi - minMidi;
+      return height - ((midi - minMidi) / range) * height;
+    };
+
+    // Dessiner les lignes horizontales de la grille MIDI (demi-tons)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+    ctx.lineWidth = 1;
+    for (let m = minMidi; m <= maxMidi; m++) {
+      const y = getMidiY(m);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+
+      // Libellé de note musicale à gauche
+      const noteNames = ["Do", "Do#", "Ré", "Ré#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"];
+      const noteLabel = noteNames[m % 12];
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.font = '8px monospace';
+      ctx.fillText(noteLabel, 6, y - 2);
+    }
+
+    // 2. Dessiner le Tunnel de Note Cible (Mélodie)
+    const hasCustomAudio = current?.target && (current.target as any).audio_url;
+    if (hasCustomAudio && refPitchCurve.length > 0) {
+      // Dessin des rectangles cibles pour l'audio personnalisé
+      const sliceWidth = width / refPitchCurve.length;
+      for (let i = 0; i < refPitchCurve.length; i++) {
+        const refHz = refPitchCurve[i];
+        if (refHz > 0) {
+          const refMidi = hzToMidi(refHz);
+          const y = getMidiY(refMidi);
+          
+          ctx.fillStyle = 'rgba(182, 134, 236, 0.15)'; // Mauve/Violet translucide
+          ctx.strokeStyle = 'rgba(182, 134, 236, 0.4)';
+          ctx.lineWidth = 1;
+          
+          // Dessiner le bloc de note
+          ctx.beginPath();
+          ctx.roundRect(i * sliceWidth + 1, y - 8, sliceWidth - 2, 16, 4);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+    } else {
+      // Dessin d'un tunnel continu vert pour la fréquence fixe cible
+      const targetHz = getExerciseTargetHz();
+      const targetMidi = hzToMidi(targetHz);
+      const y = getMidiY(targetMidi);
+      
+      const toleranceHeight = (toleranceCents / 100) * (height / (maxMidi - minMidi));
+
+      ctx.fillStyle = 'rgba(34, 197, 94, 0.08)'; // Vert translucide
+      ctx.fillRect(0, y - toleranceHeight, width, toleranceHeight * 2);
+      
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.25)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, y - toleranceHeight);
+      ctx.lineTo(width, y - toleranceHeight);
+      ctx.moveTo(0, y + toleranceHeight);
+      ctx.lineTo(width, y + toleranceHeight);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Ligne centrale de la note cible
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+
+    // 3. Dessiner la trajectoire de l'utilisateur (Particules / Laser)
+    const history = pitchHistoryRef.current;
+    if (history.length > 0) {
+      const targetHz = getExerciseTargetHz();
+      const targetMidi = hzToMidi(targetHz);
+
+      for (let i = 0; i < history.length; i++) {
+        const pt = history[i];
+        
+        // Calcul du MIDI réel de l'utilisateur basé sur les cents de déviation
+        const refHzAtStep = (hasCustomAudio && refPitchCurve.length > 0)
+          ? refPitchCurve[Math.floor((i / 49) * (refPitchCurve.length - 1))]
+          : targetHz;
+          
+        if (!refHzAtStep || refHzAtStep <= 0) continue;
+        const refMidiAtStep = hzToMidi(refHzAtStep);
+        const userMidi = refMidiAtStep + (pt.cents / 100);
+        
+        const y = getMidiY(userMidi);
+        const x = (i / 49) * width;
+        const opacity = (i / 49); // fade in de la trace historique
+
+        // Dessiner chaque point comme une particule lumineuse
+        ctx.shadowBlur = pt.just ? 8 : 4;
+        ctx.shadowColor = pt.just ? '#22c55e' : '#f97316';
+        ctx.fillStyle = pt.just 
+          ? `rgba(34, 197, 94, ${opacity})` 
+          : `rgba(249, 115, 22, ${opacity})`;
+          
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      
+      // Réinitialiser les ombres
+      ctx.shadowBlur = 0;
+
+      // Dessiner le curseur actif à l'extrémité
+      const lastPoint = history[history.length - 1];
+      const refHzLast = (hasCustomAudio && refPitchCurve.length > 0)
+        ? refPitchCurve[refPitchCurve.length - 1]
+        : targetHz;
+      
+      if (refHzLast > 0) {
+        const refMidiLast = hzToMidi(refHzLast);
+        const userMidiLast = refMidiLast + (lastPoint.cents / 100);
+        const lastY = getMidiY(userMidiLast);
+        const lastX = ((history.length - 1) / 49) * width;
+
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = lastPoint.just ? '#22c55e' : '#f97316';
+        ctx.fillStyle = lastPoint.just ? '#22c55e' : '#f97316';
+        
+        ctx.beginPath();
+        ctx.arc(lastX, lastY, 7, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Anneau externe pulsant
+        ctx.strokeStyle = lastPoint.just ? 'rgba(34, 197, 94, 0.4)' : 'rgba(249, 115, 22, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(lastX, lastY, 11 + Math.sin(Date.now() / 100) * 2, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+    }
+  }, [toleranceCents, refPitchCurve, current]);
 
   const stopSim = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
   }, []);
+
+  const detectVibrato = (centsHistory: number[]) => {
+    if (centsHistory.length < 20) return { rateHz: 0, depthCents: 0, hasVibrato: false };
+    
+    const smoothed: number[] = [];
+    for (let i = 2; i < centsHistory.length - 2; i++) {
+      smoothed.push((centsHistory[i-2] + centsHistory[i-1] + centsHistory[i] + centsHistory[i+1] + centsHistory[i+2]) / 5);
+    }
+    
+    const extrema: { idx: number; type: 'peak' | 'trough'; val: number }[] = [];
+    for (let i = 1; i < smoothed.length - 1; i++) {
+      if (smoothed[i] > smoothed[i-1] && smoothed[i] > smoothed[i+1]) {
+        extrema.push({ idx: i, type: 'peak', val: smoothed[i] });
+      } else if (smoothed[i] < smoothed[i-1] && smoothed[i] < smoothed[i+1]) {
+        extrema.push({ idx: i, type: 'trough', val: smoothed[i] });
+      }
+    }
+    
+    if (extrema.length < 4) return { rateHz: 0, depthCents: 0, hasVibrato: false };
+    
+    let totalInterval = 0;
+    let totalDepth = 0;
+    let count = 0;
+    
+    for (let i = 1; i < extrema.length; i++) {
+      const diff = extrema[i].idx - extrema[i-1].idx;
+      const depth = Math.abs(extrema[i].val - extrema[i-1].val);
+      
+      const seconds = diff * 0.1; // 100ms per sample
+      const rate = 1 / (seconds * 2);
+      
+      if (rate >= 4.0 && rate <= 8.0 && depth >= 15 && depth <= 60) {
+        totalInterval += rate;
+        totalDepth += depth;
+        count++;
+      }
+    }
+    
+    if (count >= 3) {
+      return {
+        rateHz: Math.round((totalInterval / count) * 10) / 10,
+        depthCents: Math.round(totalDepth / count),
+        hasVibrato: true
+      };
+    }
+    
+    return { rateHz: 0, depthCents: 0, hasVibrato: false };
+  };
+
+  const detectCleanAttack = (centsHistory: number[]) => {
+    const activeIdx = centsHistory.findIndex(c => c !== 0);
+    if (activeIdx === -1 || activeIdx + 3 >= centsHistory.length) return false;
+    
+    const firstSamples = centsHistory.slice(activeIdx, activeIdx + 3);
+    const maxDeviation = Math.max(...firstSamples.map(Math.abs));
+    
+    return maxDeviation <= toleranceCents + 10;
+  };
 
   const finishExercise = useCallback(() => {
     if (streamRef.current) {
@@ -445,37 +612,57 @@ export default function LessonPage({ params }: { params: { id: string } }) {
 
     const finalPitchScore = hasCustomAudio ? similarityScore : stability;
     const baseScore = Math.round((finalPitchScore * 0.6) + (volumeMatch * 0.4));
-    const acc = Math.min(99, baseScore + Math.floor(Math.random() * 4));
-
+    
+    // Analyse avancée (Vibrato & Attaque)
+    const centsHistory = pitchHistoryRef.current.map(h => h.cents);
+    const vibrato = detectVibrato(centsHistory);
+    const cleanAttack = detectCleanAttack(centsHistory);
+    
+    let bonusScore = 0;
     const metric = (current?.scoring as Record<string, unknown>)?.metric as string | undefined;
-    const points = [
+    const points: any[] = [
       { 
         label: hasCustomAudio ? 'Similitude de mélodie' : (metric === 'pitch_accuracy' ? 'Précision de la hauteur' : 'Régularité diaphragmatique'), 
         value: finalPitchScore, 
         status: (finalPitchScore >= 75 ? 'good' : 'ok') as 'good' | 'ok' 
       },
       { label: 'Contrôle du débit d\'air', value: volumeMatch, status: (volumeMatch >= 75 ? 'good' : 'ok') as 'good' | 'ok' },
-      { label: 'Intensité de l\'effort', value: acc, status: (acc >= 75 ? 'good' : 'ok') as 'good' | 'ok' }
     ];
 
-    setFeedback({ score: baseScore, accuracy: acc, points, tip: TIPS[Math.floor(Math.random() * TIPS.length)] });
+    if (vibrato.hasVibrato) {
+      points.push({ label: `Bonus Vibrato (${vibrato.rateHz} Hz)`, value: 15, status: 'good' });
+      bonusScore += 15;
+    }
+    if (cleanAttack) {
+      points.push({ label: 'Bonus Attaque Nette', value: 10, status: 'good' });
+      bonusScore += 10;
+    }
+
+    const finalScore = Math.min(100, baseScore + bonusScore);
+    const acc = Math.min(99, finalScore + Math.floor(Math.random() * 3));
+
+    // Ajouter l'intensité de l'effort
+    points.push({ label: 'Intensité de l\'effort', value: acc, status: (acc >= 75 ? 'good' : 'ok') as 'good' | 'ok' });
+
+    setFeedback({ score: finalScore, accuracy: acc, points, tip: TIPS[Math.floor(Math.random() * TIPS.length)] });
     
     // Enregistrement de la tentative physique dans Supabase
     if (current?.id) {
       supabase.from('attempts').insert({
         exercise_id: current.id,
-        score: baseScore,
+        user_id: user?.id,
+        score: finalScore,
         accuracy: acc,
         duration_ms: 4000,
-        feedback: { stability, volumeMatch }
+        feedback: { stability, volumeMatch, hasVibrato: vibrato.hasVibrato, cleanAttack }
       }).then(({ error }) => {
         if (error) console.error('Erreur lors de l\'enregistrement de la tentative :', error.message);
       });
     }
 
-    playSound(baseScore >= 75 ? 'correct' : 'wrong');
-    if (baseScore >= 80) { setMaestroMood('happy'); setMaestroMsg(getMaestroMessage('excellent')); }
-    else if (baseScore >= 65) { setMaestroMood('encouraging'); setMaestroMsg(getMaestroMessage('good')); }
+    playSound(finalScore >= 75 ? 'correct' : 'wrong');
+    if (finalScore >= 80) { setMaestroMood('happy'); setMaestroMsg(getMaestroMessage('excellent')); }
+    else if (finalScore >= 65) { setMaestroMood('encouraging'); setMaestroMsg(getMaestroMessage('good')); }
     else { setMaestroMood('thinking'); setMaestroMsg(getMaestroMessage('needsWork')); }
     setPhase('result');
   }, [current, playSound, refPitchCurve]);
