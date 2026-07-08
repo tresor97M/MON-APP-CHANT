@@ -7,6 +7,7 @@ import { ThemeProvider } from '@/hooks/use-theme';
 import { AuthProvider } from '@/hooks/use-auth';
 import { LangProvider } from '@/hooks/use-lang';
 import { Preloader } from '@/components/layout/preloader';
+import { PWAInstallPrompt } from '@/components/layout/pwa-install-prompt';
 
 const sans = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
 const display = Outfit({ subsets: ['latin'], variable: '--font-display', weight: ['400', '500', '600', '700', '800'], display: 'swap' });
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <AuthProvider>
               <Preloader />
               {children}
+              <PWAInstallPrompt />
               <Toaster />
               <Sonner />
             </AuthProvider>
