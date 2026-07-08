@@ -44,16 +44,14 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'hsl(var(--background))' }}>
-      {/* Top bar — hidden on mobile, visible on desktop */}
-      <div className="hidden md:block">
-        <TopBar />
-      </div>
+      {/* Top bar — visible on all devices */}
+      <TopBar />
 
       <div className="flex-1 flex flex-row">
         <Sidebar />
         <div className="flex-1 md:pl-64">
-          {/* Desktop: normal padding | Mobile: bottom-safe for bottom nav */}
-          <main className="px-4 md:px-8 py-4 md:py-6 pb-safe md:pb-12 max-w-6xl mx-auto">
+          {/* Desktop: normal padding | Mobile: bottom padding for bottom nav */}
+          <main className="px-4 md:px-8 py-4 md:py-6 pb-24 md:pb-12 max-w-6xl mx-auto">
             {children}
           </main>
         </div>

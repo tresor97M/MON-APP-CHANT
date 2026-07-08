@@ -211,6 +211,20 @@ export function Sidebar() {
 function BottomNav() {
   const pathname = usePathname();
   const containerRef = useRef<HTMLDivElement>(null);
+  const { userProfile: profile } = useAuth();
+  const role = profile?.role;
+  const isAdminView = pathname.startsWith('/admin');
+
+  const navItems = isAdminView ? [
+    { href: '/admin',             label: 'Admin',       icon: LayoutDashboard },
+    { href: '/admin/cantiques',    label: 'Cantiques',   icon: Music },
+    { href: '/admin/repetitions',  label: 'Pointage',    icon: ClipboardCheck },
+    { href: '/admin/membres',      label: 'Membres',     icon: Users },
+    { href: '/admin/evaluations',  label: 'Éval.',       icon: Stethoscope },
+    { href: '/admin/formation',    label: 'Formation',   icon: GraduationCap },
+    { href: '/admin/annonces',     label: 'Annonces',    icon: Megaphone },
+    ...(canManageRoles(role) ? [{ href: '/admin/acces', label: 'Accès', icon: ShieldCheck }] : []),
+  ] : BOTTOM_NAV;
 
   useEffect(() => {
     if (containerRef.current) {
@@ -223,7 +237,7 @@ function BottomNav() {
         });
       }
     }
-  }, [pathname]);
+  }, [pathname, navItems]);
 
   return (
     <nav
@@ -234,7 +248,7 @@ function BottomNav() {
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      {BOTTOM_NAV.map((item) => {
+      {navItems.map((item) => {
         const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
         return (
           <Link

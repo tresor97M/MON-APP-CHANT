@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Award, Flame, Zap, TrendingUp, Calendar, Lock, Target } from 'lucide-react';
+import { Award, Flame, Zap, TrendingUp, Calendar, Lock, Target, LogOut } from 'lucide-react';
 import { supabase, type UserStats, type Badge, type UserBadge, type Attempt } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/use-auth';
 
 const tierStyles: Record<string, string> = {
   bronze: 'from-orange-700/20 to-orange-600/5 text-orange-700 dark:text-orange-400 border-orange-600/20',
@@ -12,6 +13,7 @@ const tierStyles: Record<string, string> = {
 };
 
 export default function ProfilPage() {
+  const { signOut } = useAuth();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [badges, setBadges] = useState<Badge[]>([]);
   const [earned, setEarned] = useState<Set<string>>(new Set());
@@ -120,6 +122,17 @@ export default function ProfilPage() {
             );
           })}
         </div>
+      </section>
+
+      {/* Zone de déconnexion pour mobile */}
+      <section className="md:hidden pt-4">
+        <button
+          onClick={() => signOut()}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border border-destructive/20 bg-destructive/5 text-destructive font-semibold text-sm hover:bg-destructive/10 active:scale-95 transition-all duration-200"
+        >
+          <LogOut className="w-4 h-4" />
+          Se déconnecter
+        </button>
       </section>
     </div>
   );

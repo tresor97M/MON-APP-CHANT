@@ -7,6 +7,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/hooks/use-auth';
 import { playNotificationSound } from '@/lib/audio';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { isStaff } from '@/lib/permissions';
 import type { ChoirStats, Announcement } from '@/lib/types';
 import { VOICE_LABELS, ROLE_LABELS, type Role, type VoicePart } from '@/lib/types';
 
@@ -17,6 +19,11 @@ export function TopBar() {
   const { user, userProfile, signOut } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  
+  const pathname = usePathname();
+  const role = (userProfile?.role || 'choriste') as Role;
+  const isAdminView = pathname.startsWith('/admin');
+  const staff = isStaff(role);
 
   useEffect(() => {
     if (!user) return;
@@ -56,7 +63,6 @@ export function TopBar() {
   const userName = userProfile?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'Membre';
   const userInitial = userName.charAt(0).toUpperCase();
   const voice = userProfile?.voice_part as VoicePart | null;
-  const role = (userProfile?.role || 'choriste') as Role;
 
   const handleNotifClick = () => {
     setNotifOpen(!notifOpen);
@@ -77,7 +83,7 @@ export function TopBar() {
           </div>
         </Link>
 
-        {/* Droite : streak, notifications, profil */}
+        {/* Droite : switcher, streak, notifications, profil */}
         <div className="flex items-center gap-3 text-sm font-semibold">
           {stats && (
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sidebar-foreground/10 border border-sidebar-border text-xs">
@@ -86,6 +92,22 @@ export function TopBar() {
               <span className="text-sidebar-foreground/40">·</span>
               <span className="text-primary">{stats.total_xp} XP</span>
             </div>
+          )}
+
+          {/* Switcher Espace Choriste / Direction */}
+          {staff && (
+            <Link
+              href={isAdminView ? '/' : '/admin'}
+              className="text-[10px] sm:text-xs font-bold px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl transition-all duration-200 active:scale-95 border shrink-0"
+              style={{
+                background: isAdminView ? 'rgba(239,68,68,0.1)' : 'rgba(74,222,128,0.1)',
+                color: isAdminView ? '#EF4444' : '#4ADE80',
+                borderColor: isAdminView ? 'rgba(239,68,68,0.2)' : 'rgba(74,222,128,0.2)'
+              }}
+            >
+              <span className="inline sm:hidden">{isAdminView ? 'Choriste' : 'Direction'}</span>
+              <span className="hidden sm:inline">{isAdminView ? 'Espace Choriste' : 'Espace Direction'}</span>
+            </Link>
           )}
 
           {/* Notifications / annonces */}
@@ -139,6 +161,15 @@ export function TopBar() {
                     {ROLE_LABELS[role]}{voice ? ` · ${VOICE_LABELS[voice]}` : ''}
                   </div>
                 </div>
+                {staff && (
+                  <Link
+                    href={isAdminView ? '/' : '/admin'}
+                    onClick={() => setDropdownOpen(false)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/10 rounded-xl transition-colors border-b border-border/50 pb-2 mb-1"
+                  >
+                    {isAdminView ? 'Accéder Espace Choriste' : 'Accéder Espace Direction'}
+                  </Link>
+                )}
                 <Link
                   href="/profil"
                   onClick={() => setDropdownOpen(false)}
