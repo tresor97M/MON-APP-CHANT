@@ -19,6 +19,7 @@ export function TopBar() {
   const { user, userProfile, signOut } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [lastReadNotif, setLastReadNotif] = useState<string>('');
   
   const pathname = usePathname();
   const role = (userProfile?.role || 'choriste') as Role;
@@ -26,29 +27,55 @@ export function TopBar() {
   const staff = isStaff(role);
 
   useEffect(() => {
+    const saved = localStorage.getItem('last_read_announcements');
+    if (saved) setLastReadNotif(saved);
+  }, []);
+
+  useEffect(() => {
     if (!user) return;
     supabase.from('choir_stats').select('*').eq('user_id', user.id).maybeSingle()
       .then(({ data }) => setStats(data));
 
     const loadAnnouncements = () => {
-      supabase.from('announcements').select('*').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(5)
-        .then(({ data }) => setAnnouncements(data || []));
+      supabase.from('announcements').select('*').order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(20)
+        .then(({ data }) => {
+          const voice = userProfile?.voice_part;
+          const userRole = userProfile?.role || 'choriste';
+          const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+
+          const filtered = (data || []).filter(a => {
+            const isVoiceMatch = !a.audience_voice || a.audience_voice === voice;
+            const isPublished = !a.publish_at || new Date(a.publish_at) <= new Date();
+            return isAdmin || (isVoiceMatch && isPublished);
+          });
+          setAnnouncements(filtered.slice(0, 5));
+        });
     };
 
     loadAnnouncements();
 
     const channel = supabase
       .channel('announcements-topbar')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, () => {
-        loadAnnouncements();
-        playNotificationSound();
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, (payload: any) => {
+        const newAnn = payload.new as Announcement;
+        const voice = userProfile?.voice_part;
+        const userRole = userProfile?.role || 'choriste';
+        const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+        
+        const isVoiceMatch = !newAnn.audience_voice || newAnn.audience_voice === voice;
+        const isPublished = !newAnn.publish_at || new Date(newAnn.publish_at) <= new Date();
+        
+        if (isAdmin || (isVoiceMatch && isPublished)) {
+          loadAnnouncements();
+          playNotificationSound();
+        }
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, userProfile]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -66,8 +93,17 @@ export function TopBar() {
 
   const handleNotifClick = () => {
     setNotifOpen(!notifOpen);
-    playNotificationSound();
+    if (!notifOpen) {
+      const nowStr = new Date().toISOString();
+      localStorage.setItem('last_read_announcements', nowStr);
+      setLastReadNotif(nowStr);
+    }
   };
+
+  const unreadCount = announcements.filter(a => {
+    const dateToCompare = a.publish_at || a.created_at;
+    return !lastReadNotif || new Date(dateToCompare) > new Date(lastReadNotif);
+  }).length;
 
   return (
     <header className="sticky top-0 z-40 h-16 bg-sidebar border-b border-sidebar-border text-sidebar-foreground w-full">
@@ -118,8 +154,10 @@ export function TopBar() {
               aria-label="Annonces"
             >
               <Bell className="w-4 h-4" />
-              {announcements.some(a => a.pinned) && (
-                <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-accent rounded-full" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 rounded-full bg-accent text-[8px] font-black text-white px-1 flex items-center justify-center border border-sidebar shadow-md animate-bounce">
+                  {unreadCount}
+                </span>
               )}
             </button>
             {notifOpen && (
@@ -131,11 +169,11 @@ export function TopBar() {
                   <div className="max-h-72 overflow-y-auto">
                     {announcements.map(a => (
                       <div key={a.id} className="px-3 py-2.5 border-b border-border/50 last:border-0">
-                        <div className="text-xs font-bold flex items-center gap-1.5">
-                          {a.pinned && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />}
-                          {a.title}
+                        <div className="text-xs font-bold flex items-center gap-1.5 flex-wrap">
+                          {a.pinned && <span className="text-[8px] bg-accent/20 text-accent border border-accent/30 px-1 rounded uppercase font-extrabold">Épinglé</span>}
+                          <span>{a.title}</span>
                         </div>
-                        <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{a.content}</p>
+                        <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2 leading-relaxed">{a.content}</p>
                       </div>
                     ))}
                   </div>

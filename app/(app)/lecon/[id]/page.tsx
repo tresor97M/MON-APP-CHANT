@@ -119,8 +119,16 @@ export default function LessonPage({ params }: { params: { id: string } }) {
   const [centsOff, setCentsOff] = useState<number>(0);
   const [tolerance, setTolerance] = useState<'easy' | 'medium' | 'hard'>('medium');
 
+  const current = exercises[currentIdx];
+  const toleranceCents = tolerance === 'easy' ? 45 : tolerance === 'medium' ? 25 : 12;
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pitchHistoryRef = useRef<{ cents: number; just: boolean }[]>([]);
+  const userPitchCurveRef = useRef<number[]>([]);
+  const refAudioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlayingRefAudio, setIsPlayingRefAudio] = useState(false);
+  const [refPitchCurve, setRefPitchCurve] = useState<number[]>([]);
+  const [decodingRef, setDecodingRef] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -211,8 +219,106 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     })();
   }, [params.id]);
 
-  const current = exercises[currentIdx];
-  const toleranceCents = tolerance === 'easy' ? 45 : tolerance === 'medium' ? 25 : 12;
+  useEffect(() => {
+    // Nettoyer le lecteur audio précédent
+    if (refAudioPlayerRef.current) {
+      refAudioPlayerRef.current.pause();
+      refAudioPlayerRef.current = null;
+      setIsPlayingRefAudio(false);
+    }
+
+    if (!current || current.type !== 'pitch' || !current.target || !(current.target as any).audio_url) {
+      setRefPitchCurve([]);
+      return;
+    }
+
+    const loadRefAudio = async () => {
+      setDecodingRef(true);
+      try {
+        const audioUrl = (current.target as any).audio_url;
+        const res = await fetch(audioUrl);
+        const arrayBuffer = await res.arrayBuffer();
+        
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        const tempCtx = new AudioCtx();
+        const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+        
+        const sampleRate = audioBuffer.sampleRate;
+        const rawData = audioBuffer.getChannelData(0);
+        
+        const numSlices = 80;
+        const sliceLength = Math.floor(sampleRate * 0.1);
+        const step = Math.floor((rawData.length - sliceLength) / numSlices);
+        
+        const curve: number[] = [];
+        for (let i = 0; i < numSlices; i++) {
+          const startIdx = i * step;
+          const endIdx = startIdx + sliceLength;
+          if (endIdx > rawData.length) break;
+          
+          const bufferSlice = rawData.subarray(startIdx, endIdx);
+          const pitch = autoCorrelate(bufferSlice, sampleRate);
+          curve.push(pitch > 0 ? pitch : -1);
+        }
+        
+        setRefPitchCurve(curve);
+        tempCtx.close();
+      } catch (err) {
+        console.error('Error decoding reference pitch:', err);
+      } finally {
+        setDecodingRef(false);
+      }
+    };
+
+    loadRefAudio();
+  }, [current]);
+
+  const toggleRefAudio = () => {
+    if (!current?.target || !(current.target as any).audio_url) return;
+    
+    if (!refAudioPlayerRef.current) {
+      refAudioPlayerRef.current = new Audio((current.target as any).audio_url);
+      refAudioPlayerRef.current.onended = () => {
+        setIsPlayingRefAudio(false);
+      };
+    }
+    
+    if (isPlayingRefAudio) {
+      refAudioPlayerRef.current.pause();
+      setIsPlayingRefAudio(false);
+    } else {
+      refAudioPlayerRef.current.currentTime = 0;
+      refAudioPlayerRef.current.play().catch(e => console.error(e));
+      setIsPlayingRefAudio(true);
+    }
+  };
+
+  const comparePitchCurves = (userCurve: number[], refCurve: number[]) => {
+    if (!refCurve.length || !userCurve.length) return 0;
+    
+    let matchedNotes = 0;
+    let totalNotes = 0;
+    
+    for (let i = 0; i < refCurve.length; i++) {
+      const refHz = refCurve[i];
+      if (refHz <= 0) continue;
+      
+      totalNotes++;
+      
+      const userIdx = Math.floor((i / refCurve.length) * userCurve.length);
+      const userHz = userCurve[userIdx];
+      
+      if (userHz > 0) {
+        const cents = Math.abs(1200 * Math.log2(userHz / refHz));
+        if (cents <= toleranceCents) {
+          matchedNotes++;
+        }
+      }
+    }
+    
+    if (totalNotes === 0) return 80;
+    return Math.round((matchedNotes / totalNotes) * 100);
+  };
 
   const drawPitchCurve = useCallback(() => {
     const canvas = canvasRef.current;
@@ -330,22 +436,29 @@ export default function LessonPage({ params }: { params: { id: string } }) {
       return;
     }
 
+    const hasCustomAudio = current?.target && (current.target as any).audio_url;
+    const similarityScore = hasCustomAudio ? comparePitchCurves(userPitchCurveRef.current, refPitchCurve) : -1;
+
     const variance = data.reduce((acc, val) => acc + Math.pow(val - averageVolume, 2), 0) / data.length;
     const stability = Math.max(10, Math.min(100, Math.round(100 - (variance * 0.45))));
     const volumeMatch = Math.max(10, Math.min(100, Math.round(100 - Math.abs(30 - averageVolume) * 1.6)));
 
-    const baseScore = Math.round((stability * 0.6) + (volumeMatch * 0.4));
+    const finalPitchScore = hasCustomAudio ? similarityScore : stability;
+    const baseScore = Math.round((finalPitchScore * 0.6) + (volumeMatch * 0.4));
     const acc = Math.min(99, baseScore + Math.floor(Math.random() * 4));
 
     const metric = (current?.scoring as Record<string, unknown>)?.metric as string | undefined;
     const points = [
-      { label: metric === 'pitch_accuracy' ? 'Précision de la hauteur' : 'Régularité diaphragmatique', value: stability, status: (stability >= 75 ? 'good' : 'ok') as 'good' | 'ok' },
+      { 
+        label: hasCustomAudio ? 'Similitude de mélodie' : (metric === 'pitch_accuracy' ? 'Précision de la hauteur' : 'Régularité diaphragmatique'), 
+        value: finalPitchScore, 
+        status: (finalPitchScore >= 75 ? 'good' : 'ok') as 'good' | 'ok' 
+      },
       { label: 'Contrôle du débit d\'air', value: volumeMatch, status: (volumeMatch >= 75 ? 'good' : 'ok') as 'good' | 'ok' },
       { label: 'Intensité de l\'effort', value: acc, status: (acc >= 75 ? 'good' : 'ok') as 'good' | 'ok' }
     ];
 
     setFeedback({ score: baseScore, accuracy: acc, points, tip: TIPS[Math.floor(Math.random() * TIPS.length)] });
-    setScore((s) => s + baseScore);
     
     // Enregistrement de la tentative physique dans Supabase
     if (current?.id) {
@@ -365,15 +478,22 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     else if (baseScore >= 65) { setMaestroMood('encouraging'); setMaestroMsg(getMaestroMessage('good')); }
     else { setMaestroMood('thinking'); setMaestroMsg(getMaestroMessage('needsWork')); }
     setPhase('result');
-  }, [current, playSound]);
+  }, [current, playSound, refPitchCurve]);
 
   const startRecording = useCallback(async () => {
+    // Nettoyer le lecteur de référence
+    if (refAudioPlayerRef.current) {
+      refAudioPlayerRef.current.pause();
+      setIsPlayingRefAudio(false);
+    }
+
     setPhase('listening');
     setMaestroMood('talking');
     setMaestroMsg(getMaestroMessage('listening'));
     
     audioDataRef.current = [];
     pitchHistoryRef.current = [];
+    userPitchCurveRef.current = [];
     setDetectedPitch(null);
     setDetectedNoteName('');
     setCentsOff(0);
@@ -417,6 +537,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
           
           if (pitch !== -1 && rms > 0.015) {
             setDetectedPitch(Math.round(pitch));
+            userPitchCurveRef.current.push(pitch);
             
             // Conversion fréquence en note musicale midi
             const noteNum = 12 * (Math.log(pitch / 440) / Math.log(2));
@@ -434,6 +555,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
             pitchHistoryRef.current.push({ cents, just: Math.abs(cents) <= toleranceCents });
           } else {
             setDetectedPitch(null);
+            userPitchCurveRef.current.push(-1);
             setDetectedNoteName('');
             setCentsOff(0);
             pitchHistoryRef.current.push({ cents: 0, just: false });
@@ -531,7 +653,6 @@ export default function LessonPage({ params }: { params: { id: string } }) {
           ],
           tip: TIPS[Math.floor(Math.random() * TIPS.length)],
         });
-        setScore((s) => s + pct);
 
         // Enregistrement de la tentative de quiz dans Supabase
         if (current?.id) {
@@ -552,10 +673,11 @@ export default function LessonPage({ params }: { params: { id: string } }) {
   }, [quizAnswer, quizIdx, quizQuestions, quizCorrect, playSound]);
 
   const nextExercise = useCallback(async () => {
+    const finalScore = score + (feedback?.score || 0);
     if (currentIdx + 1 >= exercises.length) {
       if (lesson) {
         const { data: existing } = await supabase.from('user_progress').select('*').eq('lesson_id', lesson.id).maybeSingle();
-        const avgScore = Math.round(score / exercises.length);
+        const avgScore = Math.round(finalScore / exercises.length);
         if (existing) {
           await supabase.from('user_progress').update({ status: 'completed', completed: true, best_score: Math.max(existing.best_score, avgScore), updated_at: new Date().toISOString() }).eq('id', existing.id);
         } else {
@@ -625,13 +747,31 @@ export default function LessonPage({ params }: { params: { id: string } }) {
       setMaestroMsg(getMaestroMessage('complete'));
       setPhase('complete');
     } else {
+      setScore(finalScore);
       setCurrentIdx((i) => i + 1);
       setFeedback(null);
       setMaestroMood('encouraging');
       setMaestroMsg('Allez, exercice suivant ! Tu gères.');
       setPhase('practice');
     }
-  }, [currentIdx, exercises.length, lesson, moduleData, score, celebrate]);
+  }, [currentIdx, exercises.length, lesson, moduleData, score, feedback, celebrate]);
+
+  const retryExercise = useCallback(() => {
+    setFeedback(null);
+    setQuizAnswer(null);
+    setQuizIdx(0);
+    setQuizCorrect(0);
+    setDetectedPitch(null);
+    setDetectedNoteName('');
+    setCentsOff(0);
+    pitchHistoryRef.current = [];
+    audioDataRef.current = [];
+    if (current?.type === 'quiz') {
+      startQuiz();
+    } else {
+      setPhase('practice');
+    }
+  }, [current, startQuiz]);
 
   useEffect(() => () => stopSim(), [stopSim]);
 
@@ -775,6 +915,27 @@ export default function LessonPage({ params }: { params: { id: string } }) {
                   </button>
                 </div>
                 <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest animate-pulse">Appuie et chante</p>
+
+                {current?.target && (current.target as any).audio_url && (
+                  <div className="pt-2 animate-fade-in">
+                    <button
+                      onClick={toggleRefAudio}
+                      className={cn(
+                        "inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-lg",
+                        isPlayingRefAudio
+                          ? "bg-accent/20 border-accent/40 text-accent animate-pulse"
+                          : "bg-white/5 border-white/10 hover:bg-white/10 text-white"
+                      )}
+                    >
+                      {isPlayingRefAudio ? "⏸️ Arrêter le modèle" : "▶️ Écouter le modèle vocal"}
+                    </button>
+                    {decodingRef && (
+                      <span className="block text-[10px] text-muted-foreground/60 mt-1.5 animate-pulse">
+                        Analyse du modèle par l'IA...
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Sélecteur de tolérance / difficulté */}
                 <div className="pt-4 max-w-xs mx-auto space-y-2">
@@ -937,15 +1098,15 @@ export default function LessonPage({ params }: { params: { id: string } }) {
               <div className="space-y-5 animate-scale-in">
                 <div className="text-center py-2">
                   <div className="font-display text-4xl font-extrabold text-foreground tabular-nums">{feedback.score}<span className="text-lg text-muted-foreground font-semibold">/100</span></div>
-                  <div className={cn('text-xs font-bold uppercase tracking-wider mt-2', feedback.score >= 85 ? 'text-success' : feedback.score >= 70 ? 'text-primary' : 'text-accent')}>
-                    {feedback.score >= 85 ? 'Performance Excellente !' : feedback.score >= 70 ? 'Bien joué !' : 'Continue de t\'entraîner'}
+                  <div className={cn('text-xs font-bold uppercase tracking-wider mt-2', feedback.score >= 90 ? 'text-success' : 'text-orange-500')}>
+                    {feedback.score >= 90 ? 'Performance Validée ! ✨' : 'Score insuffisant (requis: 90%) ⚠️'}
                   </div>
                 </div>
                 <div className="space-y-2.5">
                   {feedback.points.map((p, i) => (
                     <div key={i} className="flex items-center gap-3">
                       <div className={cn('grid place-items-center w-5 h-5 rounded-full shrink-0 shadow-sm', p.status === 'good' ? 'bg-success text-success-foreground' : p.status === 'ok' ? 'bg-primary text-primary-foreground' : 'bg-accent text-accent-foreground')}>
-                        {p.status === 'bad' ? <X className="w-3 h-3" /> : <Check className="w-3 h-3" />}
+                        {p.status === 'bad' || p.value < 90 ? <X className="w-3 h-3" /> : <Check className="w-3 h-3" />}
                       </div>
                       <span className="text-sm font-medium flex-1 text-foreground/90">{p.label}</span>
                       <span className="text-sm font-bold tabular-nums">{p.value}%</span>
@@ -956,9 +1117,15 @@ export default function LessonPage({ params }: { params: { id: string } }) {
                   <Sparkles className="w-5 h-5 text-secondary shrink-0 mt-0.5 animate-pulse" />
                   <p className="text-xs text-foreground/80 leading-relaxed font-medium">{feedback.tip}</p>
                 </div>
-                <button onClick={nextExercise} className="w-full py-4 rounded-2xl bg-gradient-to-r from-primary to-secondary text-primary-foreground font-bold text-sm hover:opacity-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20">
-                  {currentIdx + 1 >= exercises.length ? 'Terminer' : 'Exercice suivant'} <ChevronRight className="w-4 h-4" />
-                </button>
+                {feedback.score >= 90 ? (
+                  <button onClick={nextExercise} className="w-full py-4 rounded-2xl bg-gradient-to-r from-primary to-secondary text-primary-foreground font-bold text-sm hover:opacity-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20">
+                    {currentIdx + 1 >= exercises.length ? 'Terminer' : 'Exercice suivant'} <ChevronRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button onClick={retryExercise} className="w-full py-4 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-sm hover:opacity-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20">
+                    <RotateCcw className="w-4 h-4" /> Réessayer l'exercice
+                  </button>
+                )}
               </div>
             )}
           </div>

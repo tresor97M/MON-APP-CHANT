@@ -22,6 +22,10 @@ import { useLang } from '@/hooks/use-lang';
 import { cn } from '@/lib/utils';
 import { playNotificationSound, playHangupSound, playCallConnectedSound } from '@/lib/audio';
 import { WebRTCCallManager, type IncomingCallInfo, type CallType } from '@/lib/webrtc';
+import { isStaff } from '@/lib/permissions';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -212,7 +216,7 @@ function MessageBubble({ msg, mine, lang }: { msg: ChatMessage; mine: boolean; l
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function MessagesPage() {
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const { lang, t } = useLang();
   const locale = lang === 'fr' ? 'fr-FR' : 'en-US';
 
@@ -228,6 +232,13 @@ export default function MessagesPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [allProfiles, setAllProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // ── New Modals State ──────────────────────────────────────────────────────
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [showNewGroupModal, setShowNewGroupModal] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupAvatar, setNewGroupAvatar] = useState('🎤');
+  const [selectedGroupMembers, setSelectedGroupMembers] = useState<string[]>([]);
 
   // ── Input bar ─────────────────────────────────────────────────────────────
   const [inputText, setInputText] = useState('');
@@ -747,6 +758,72 @@ export default function MessagesPage() {
     }
   };
 
+  const handleCreateGroup = async () => {
+    if (!newGroupName.trim() || !user) return;
+    setUploading(true);
+
+    try {
+      // 1. Insert into group_conversations
+      const { data: group, error: gErr } = await supabase
+        .from('group_conversations')
+        .insert({
+          name: newGroupName.trim(),
+          avatar: newGroupAvatar,
+          last_message: 'Groupe créé',
+        })
+        .select()
+        .single();
+
+      if (gErr || !group) {
+        console.error('Error creating group:', gErr);
+        alert('Erreur lors de la création du groupe');
+        setUploading(false);
+        return;
+      }
+
+      // 2. Add members to group_members (selected ones + current user)
+      const membersToInsert = Array.from(new Set([user.id, ...selectedGroupMembers])).map(uid => ({
+        group_id: group.id,
+        user_id: uid,
+      }));
+
+      const { error: mErr } = await supabase
+        .from('group_members')
+        .insert(membersToInsert);
+
+      if (mErr) {
+        console.error('Error adding group members:', mErr);
+        alert('Erreur lors de l\'ajout des membres au groupe');
+        setUploading(false);
+        return;
+      }
+
+      // 3. Update the group threads list
+      const thread: ChatThread = {
+        id: group.id,
+        kind: 'group',
+        name: group.name,
+        avatar: group.avatar,
+        online: false,
+        unread: 0,
+        lastMsg: 'Groupe créé',
+        time: formatTime(new Date().toISOString(), locale),
+      };
+
+      setGroupThreads(prev => [thread, ...prev]);
+      setActiveTab('group');
+      setActiveThread(thread);
+      setShowNewGroupModal(false);
+      setNewGroupName('');
+      setNewGroupAvatar('🎤');
+      setSelectedGroupMembers([]);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const threads = activeTab === 'direct' ? directThreads : groupThreads;
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -771,7 +848,27 @@ export default function MessagesPage() {
         style={{ background: 'rgba(255,255,255,0.015)', borderColor: 'rgba(255,255,255,0.08)' }}
       >
         <div className="p-4 border-b flex flex-col gap-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-          <h2 className="font-bold text-sm text-white">{t('msg_title')}</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-sm text-white">{t('msg_title')}</h2>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setShowNewChatModal(true)}
+                title="Nouveau message"
+                className="p-1.5 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+              {isStaff(userProfile?.role) && (
+                <button
+                  onClick={() => setShowNewGroupModal(true)}
+                  title="Nouveau groupe"
+                  className="p-1.5 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
 
           {/* Tabs */}
           <div className="flex bg-white/5 p-0.5 rounded-xl border border-white/5">
@@ -1243,6 +1340,135 @@ export default function MessagesPage() {
             </div>
           </div>
         </div>
+      )}
+    {/* Dialogue de Nouveau Message / DM */}
+      {showNewChatModal && (
+        <Dialog open onOpenChange={(open) => { if (!open) setShowNewChatModal(false); }}>
+          <DialogContent className="max-w-md bg-[#0a0d14] border border-white/10 text-white rounded-3xl p-6 shadow-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-white text-base font-bold">Nouveau message</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-3">
+              <p className="text-xs text-white/50">Sélectionnez un choriste pour démarrer une discussion privée :</p>
+              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                {allProfiles.length === 0 ? (
+                  <div className="text-xs text-white/40 text-center py-4">Aucun autre choriste trouvé.</div>
+                ) : (
+                  allProfiles.map(p => {
+                    const name = p.display_name || 'Utilisateur';
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => {
+                          openDirectConversation(p);
+                          setShowNewChatModal(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl hover:bg-white/5 transition-colors text-left border border-transparent hover:border-white/5"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500/20 to-emerald-400/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold grid place-items-center shrink-0">
+                          {name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-bold text-white">{name}</div>
+                          <div className="text-[10px] text-white/40">Ouvrir un chat direct</div>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dialogue de Création de Groupe */}
+      {showNewGroupModal && (
+        <Dialog open onOpenChange={(open) => { if (!open) setShowNewGroupModal(false); }}>
+          <DialogContent className="max-w-md bg-[#0a0d14] border border-white/10 text-white rounded-3xl p-6 shadow-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-white text-base font-bold">Créer un groupe de discussion</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-3">
+              <div className="space-y-1.5">
+                <label className="text-white/80 text-xs font-semibold">Nom du groupe</label>
+                <input
+                  type="text"
+                  placeholder="Ex. Sopranos, Ténors, Équipe Louange..."
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm outline-none focus:border-[#B686EC] transition-all"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-white/80 text-xs font-semibold">Avatar / Emoji</label>
+                <div className="flex gap-2">
+                  {['🎤', '🎵', '🎶', '🗣️', '🎹', '🎸'].map(emoji => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => setNewGroupAvatar(emoji)}
+                      className={cn(
+                        'w-9 h-9 rounded-xl text-lg flex items-center justify-center border transition-all',
+                        newGroupAvatar === emoji
+                          ? 'bg-[#B686EC]/20 border-[#B686EC] scale-105 shadow-md shadow-[#B686EC]/10'
+                          : 'bg-white/5 border-white/10 hover:bg-white/10'
+                      )}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-white/80 text-xs font-semibold">Membres du groupe</label>
+                <div className="space-y-1 max-h-48 overflow-y-auto border border-white/10 rounded-xl p-2.5 bg-white/5">
+                  {allProfiles.length === 0 ? (
+                    <div className="text-xs text-white/40 text-center py-2">Aucun membre disponible.</div>
+                  ) : (
+                    allProfiles.map(p => {
+                      const isChecked = selectedGroupMembers.includes(p.user_id);
+                      return (
+                        <label key={p.id} className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-white/5 rounded-lg cursor-pointer text-xs">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              setSelectedGroupMembers(prev => 
+                                isChecked ? prev.filter(id => id !== p.user_id) : [...prev, p.user_id]
+                              );
+                            }}
+                            className="rounded border-white/20 bg-transparent text-[#B686EC] focus:ring-0 cursor-pointer"
+                          />
+                          <span>{p.display_name || 'Utilisateur'}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="pt-2">
+              <button
+                type="button"
+                onClick={() => setShowNewGroupModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold hover:bg-white/5 transition-colors text-white/70"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateGroup}
+                disabled={uploading || !newGroupName.trim()}
+                className="px-4 py-2 bg-gradient-to-r from-[#B686EC] to-purple-500 text-white rounded-xl text-xs font-bold hover:opacity-95 disabled:opacity-50 transition-opacity shadow-lg shadow-purple-500/20"
+              >
+                {uploading ? 'Création...' : 'Créer le groupe'}
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

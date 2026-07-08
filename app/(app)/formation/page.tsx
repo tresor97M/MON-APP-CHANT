@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { GraduationCap, CheckCircle2, Circle, BookOpen, Music, Sparkles, ExternalLink, ArrowLeft, Play } from 'lucide-react';
+import { GraduationCap, CheckCircle2, Circle, BookOpen, Music, Sparkles, ExternalLink, ArrowLeft, Play, Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 function getYoutubeThumbnail(url: string) {
   if (!url) return null;
@@ -24,6 +25,13 @@ function getYoutubeThumbnail(url: string) {
   return null;
 }
 
+function getYoutubeVideoId(url: string) {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+}
+
 export default function FormationPage() {
   const { user } = useAuth();
   const [paths, setPaths] = useState<TrainingPath[]>([]);
@@ -33,6 +41,10 @@ export default function FormationPage() {
   const [gaps, setGaps] = useState<SkillGap[]>([]);
   const [loading, setLoading] = useState(true);
   const [completingId, setCompletingId] = useState<string | null>(null);
+  
+  // Video watching states
+  const [playingVideoModule, setPlayingVideoModule] = useState<TrainingModule | null>(null);
+  const [watchedModules, setWatchedModules] = useState<Set<string>>(new Set());
   
   // Tab states: 'todo' | 'open' | 'done'
   const [activeTab, setActiveTab] = useState<'todo' | 'open' | 'done'>('todo');
@@ -57,6 +69,27 @@ export default function FormationPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Load watched modules from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('watched_modules');
+    if (saved) {
+      try {
+        setWatchedModules(new Set(JSON.parse(saved)));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  const markAsWatched = useCallback((moduleId: string) => {
+    setWatchedModules((prev) => {
+      const next = new Set(prev);
+      next.add(moduleId);
+      localStorage.setItem('watched_modules', JSON.stringify(Array.from(next)));
+      return next;
+    });
+  }, []);
 
   const completedIds = useMemo(() => new Set(completions.map(c => c.module_id)), [completions]);
   const assignedPathIds = useMemo(() => new Set(assignments.map(a => a.path_id)), [assignments]);
@@ -215,6 +248,8 @@ export default function FormationPage() {
                       done={completedIds.has(mod.id)}
                       onComplete={completeModule}
                       completingId={completingId}
+                      watched={watchedModules.has(mod.id)}
+                      onPlayVideo={setPlayingVideoModule}
                     />
                   ))}
                 </div>
@@ -241,6 +276,8 @@ export default function FormationPage() {
                       done={completedIds.has(mod.id)}
                       onComplete={completeModule}
                       completingId={completingId}
+                      watched={watchedModules.has(mod.id)}
+                      onPlayVideo={setPlayingVideoModule}
                     />
                   ))}
                 </div>
@@ -267,6 +304,8 @@ export default function FormationPage() {
                       done={true}
                       onComplete={completeModule}
                       completingId={completingId}
+                      watched={watchedModules.has(mod.id)}
+                      onPlayVideo={setPlayingVideoModule}
                     />
                   ))}
                 </div>
@@ -275,6 +314,16 @@ export default function FormationPage() {
           )
         )}
       </div>
+
+      {/* Video Player Modal */}
+      {playingVideoModule && (
+        <VideoPlayerModal
+          mod={playingVideoModule}
+          onClose={() => setPlayingVideoModule(null)}
+          onVideoEnded={() => markAsWatched(playingVideoModule.id)}
+          watched={watchedModules.has(playingVideoModule.id)}
+        />
+      )}
 
     </div>
   );
@@ -306,12 +355,14 @@ function PathHeader({ path, progress }: { path: TrainingPath; progress: number }
 }
 
 function ModuleCard({
-  mod, done, onComplete, completingId
+  mod, done, onComplete, completingId, watched, onPlayVideo
 }: {
   mod: TrainingModule;
   done: boolean;
   onComplete: (mod: TrainingModule) => void;
   completingId: string | null;
+  watched: boolean;
+  onPlayVideo: (mod: TrainingModule) => void;
 }) {
   const isVideo = !!mod.resource_url;
   const ytThumb = mod.resource_url ? getYoutubeThumbnail(mod.resource_url) : null;
@@ -321,7 +372,7 @@ function ModuleCard({
       {/* Thumbnail (Video Play Cover, style screenshot) */}
       {isVideo ? (
         <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-[#0a0d14] border border-white/5 flex items-center justify-center group cursor-pointer"
-          onClick={() => mod.resource_url && window.open(mod.resource_url, '_blank')}>
+          onClick={() => onPlayVideo(mod)}>
           {ytThumb ? (
             <img src={ytThumb} alt={mod.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
           ) : (
@@ -340,6 +391,12 @@ function ModuleCard({
           <div className="absolute top-3 left-3 px-2 py-0.5 rounded-md bg-emerald-500 text-[#071008] text-[9px] font-black tracking-wider uppercase">
             COURS VIDÉO
           </div>
+
+          {watched && (
+            <div className="absolute top-3 right-3 px-2 py-0.5 rounded-md bg-success text-success-foreground text-[9px] font-black tracking-wider uppercase flex items-center gap-1">
+              <Eye className="w-3 h-3" /> VU
+            </div>
+          )}
         </div>
       ) : (
         <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-gradient-to-tr from-emerald-500/10 to-emerald-400/10 border border-white/5 flex flex-col items-center justify-center p-4">
@@ -367,14 +424,12 @@ function ModuleCard({
       <div className="flex flex-col gap-2 pt-1">
         <div className="flex items-center gap-2">
           {mod.resource_url && (
-            <a
-              href={mod.resource_url}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => onPlayVideo(mod)}
               className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-[11px] font-bold text-white hover:bg-white/10 transition-colors"
             >
               Regarder le cours
-            </a>
+            </button>
           )}
           {mod.lesson_id && (
             <Link
@@ -389,13 +444,103 @@ function ModuleCard({
         {!done && (
           <button
             onClick={() => onComplete(mod)}
-            disabled={completingId === mod.id}
+            disabled={completingId === mod.id || (isVideo && !watched)}
             className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white text-black text-[11px] font-bold hover:bg-white/90 disabled:opacity-50 transition-colors"
           >
-            {completingId === mod.id ? 'Validation...' : 'Marquer comme terminé'}
+            {completingId === mod.id 
+              ? 'Validation...' 
+              : (isVideo && !watched) 
+                ? 'Regarder la vidéo pour valider' 
+                : 'Marquer comme terminé'}
           </button>
         )}
       </div>
     </div>
+  );
+}
+
+function VideoPlayerModal({
+  mod, onClose, onVideoEnded, watched
+}: {
+  mod: TrainingModule;
+  onClose: () => void;
+  onVideoEnded: () => void;
+  watched: boolean;
+}) {
+  const videoId = mod.resource_url ? getYoutubeVideoId(mod.resource_url) : null;
+  const [justEnded, setJustEnded] = useState(false);
+
+  useEffect(() => {
+    if (!videoId) return;
+    const handleMessage = (e: MessageEvent) => {
+      if (!e.origin.includes('youtube.com')) return;
+      try {
+        const data = JSON.parse(e.data);
+        if (data.event === 'infoDelivery' && data.info && data.info.playerState === 0) {
+          onVideoEnded();
+          setJustEnded(true);
+        }
+      } catch (err) {
+        // Ignorer les erreurs de parsing JSON
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [videoId, onVideoEnded]);
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-xl bg-[#0a0d14] border border-white/10 text-white rounded-3xl p-5 shadow-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-base font-bold truncate pr-6 text-white">{mod.title}</DialogTitle>
+        </DialogHeader>
+        
+        <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black border border-white/5 relative mt-2">
+          {videoId ? (
+            <iframe
+              src={`https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${window.location.origin}`}
+              className="w-full h-full"
+              allow="autoplay; encrypted-media"
+              allowFullScreen
+              title={mod.title}
+            />
+          ) : mod.resource_url ? (
+            <video
+              src={mod.resource_url}
+              controls
+              autoPlay
+              onEnded={() => {
+                onVideoEnded();
+                setJustEnded(true);
+              }}
+              className="w-full h-full object-contain"
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-white/40 text-xs">
+              Lien de cours non valide
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2 pt-2 text-center">
+          {watched || justEnded ? (
+            <p className="text-xs font-bold text-emerald-400 flex items-center justify-center gap-1 animate-fade-in">
+              <CheckCircle2 className="w-4 h-4" /> Vidéo visionnée ! Vous pouvez fermer et valider ce cours.
+            </p>
+          ) : (
+            <p className="text-xs text-white/50 animate-pulse">
+              Regardez la vidéo jusqu'au bout pour pouvoir terminer le module.
+            </p>
+          )}
+          
+          <button 
+            onClick={() => { onVideoEnded(); setJustEnded(true); }}
+            className="text-[10px] text-white/20 hover:text-white/40 self-center mt-1 transition-colors"
+          >
+            Passer la vidéo (Simuler)
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

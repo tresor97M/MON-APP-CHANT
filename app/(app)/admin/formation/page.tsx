@@ -37,6 +37,13 @@ export default function AdminFormationPage() {
   // Affectation
   const [assignUserId, setAssignUserId] = useState('');
 
+  // Dialog leçon & exercice vocal custom
+  const [exerciseLessonDialog, setExerciseLessonDialog] = useState(false);
+  const [newLessonName, setNewLessonName] = useState('');
+  const [newExercisePrompt, setNewExercisePrompt] = useState('');
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
+
   const load = useCallback(async () => {
     const [pathRes, modRes, assignRes, memRes, hymnRes, lessonRes] = await Promise.all([
       supabase.from('training_paths').select('*').order('created_at', { ascending: false }),
@@ -124,6 +131,115 @@ export default function AdminFormationPage() {
   const unassign = async (a: TrainingAssignment) => {
     await supabase.from('training_assignments').delete().eq('id', a.id);
     load();
+  };
+
+  const createExerciseLesson = async () => {
+    if (!newLessonName.trim() || !audioFile || !user) return;
+    setUploadingAudio(true);
+
+    try {
+      // 1. Upload du fichier audio de référence
+      const fileExt = audioFile.name.split('.').pop();
+      const fileName = `${Date.now()}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('exercise-audios')
+        .upload(filePath, audioFile, { contentType: audioFile.type });
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        alert('Erreur lors de l\'upload du fichier audio : ' + uploadError.message);
+        setUploadingAudio(false);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('exercise-audios')
+        .getPublicUrl(filePath);
+
+      const audioUrl = urlData.publicUrl;
+
+      // Trouver le premier module d'apprentissage lié à notre parcours (ou un module par défaut)
+      // On lie la leçon au premier module ou si l'admin l'affecte plus tard
+      // Pour être simple et direct, nous insérons un nouveau module d'apprentissage de type "Chant sur Modèle"
+      // ou nous créons simplement la leçon et l'exercice, puis nous permettons à l'admin de le lier !
+      // Mais attendons ! Si on crée la leçon, on l'ajoute à la table "lessons".
+      // La table "lessons" a besoin d'un "module_id" de type public.modules (qui représente un module interactif du parcours)!
+      // Voyons si on a un module_id dans la table "lessons" de public.
+      // Oui! lessons references public.modules(id).
+      // Dans le seed:
+      // Les modules de practice (ex: Respiration & Soutien, Justesse Vocale) ont des ID fixes.
+      // Donc, nous pouvons lier la leçon à un des modules interactifs (ex: '33333333-3333-3333-3333-333333333332' pour Justesse Vocale)!
+      // Lisons les modules interactifs existants (de la table public.modules, pas training_modules)!
+      // Ah! Dans les données chargées, on a déjà "lessons" chargées (const [lessons, setLessons] = useState(...)).
+      // Mais on n'a pas chargé les "modules" de practice!
+      // En fait, dans `seed_data.sql`, le module "Justesse Vocale" a l'id: `33333333-3333-3333-3333-333333333332`.
+      // Nous pouvons simplement charger la liste des modules de practice ou lier par défaut au premier module de practice trouvé!
+      // Chargeons les modules de practice dans la fonction `load()`.
+      // Ou plus simplement, chargeons-les lors de l'appel pour trouver le premier module de practice.
+      
+      const { data: practiceModules } = await supabase
+        .from('modules')
+        .select('id, name')
+        .limit(1);
+      
+      const practiceModuleId = practiceModules && practiceModules.length > 0 
+        ? practiceModules[0].id 
+        : '33333333-3333-3333-3333-333333333332'; // Justesse Vocale ID par défaut
+
+      // 2. Insérer la leçon interactif
+      const { data: newLesson, error: lessonError } = await supabase
+        .from('lessons')
+        .insert({
+          module_id: practiceModuleId,
+          name: newLessonName.trim(),
+          description: 'Écoutez le modèle audio et chantez pour reproduire la mélodie.',
+          xp_reward: 25,
+          sort_order: 10,
+        })
+        .select()
+        .single();
+
+      if (lessonError || !newLesson) {
+        console.error('Lesson creation error:', lessonError);
+        alert('Erreur lors de la création de la leçon : ' + lessonError?.message);
+        setUploadingAudio(false);
+        return;
+      }
+
+      // 3. Insérer l'exercice lié à la leçon
+      const { error: exerciseError } = await supabase
+        .from('exercises')
+        .insert({
+          lesson_id: newLesson.id,
+          name: `Modèle : ${audioFile.name.split('.')[0]}`,
+          type: 'pitch',
+          prompt: newExercisePrompt.trim() || 'Écoutez attentivement le modèle vocal puis chantez pour le reproduire avec justesse.',
+          target: { audio_url: audioUrl, is_custom_audio: true },
+          scoring: { metric: 'pitch_similarity' },
+          sort_order: 0,
+        });
+
+      if (exerciseError) {
+        console.error('Exercise creation error:', exerciseError);
+        alert('Erreur lors de la création de l\'exercice : ' + exerciseError?.message);
+        setUploadingAudio(false);
+        return;
+      }
+
+      alert('Leçon et exercice créés avec succès ! Vous pouvez maintenant la lier à vos modules de formation.');
+      setNewLessonName('');
+      setNewExercisePrompt('');
+      setAudioFile(null);
+      setExerciseLessonDialog(false);
+      load(); // recharger la liste des leçons pour la liaison
+    } catch (err) {
+      console.error(err);
+      alert('Une erreur inattendue est survenue.');
+    } finally {
+      setUploadingAudio(false);
+    }
   };
 
   const memberName = (id: string) => {
@@ -285,7 +401,16 @@ export default function AdminFormationPage() {
                             </select>
                           </div>
                           <div>
-                            <label className={labelCls}>Lier un cours / exercice (optionnel)</label>
+                            <div className="flex items-center justify-between">
+                              <label className={labelCls}>Lier un cours / exercice (optionnel)</label>
+                              <button
+                                type="button"
+                                onClick={() => setExerciseLessonDialog(true)}
+                                className="text-[10px] text-primary hover:underline font-bold"
+                              >
+                                + Créer Exercice Vocal
+                              </button>
+                            </div>
                             <select
                               value={moduleForm.lessonId}
                               onChange={e => setModuleForm(f => ({ ...f, lessonId: e.target.value }))}
@@ -427,6 +552,83 @@ export default function AdminFormationPage() {
               </button>
               <button type="button" onClick={createPath} disabled={saving} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
                 {saving && <Loader2 className="w-4 h-4 animate-spin" />} Créer
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Création de Leçon/Exercice Vocal avec Audio */}
+      <Dialog open={exerciseLessonDialog} onOpenChange={setExerciseLessonDialog}>
+        <DialogContent className="max-w-md bg-[#0a0d14] border border-white/10 text-white rounded-3xl p-6 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-white text-base font-bold">Nouveau cours / exercice de chant</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-3">
+            <div className="space-y-1.5">
+              <label className="text-white/80 text-xs font-semibold">Titre de la leçon *</label>
+              <input
+                type="text"
+                placeholder="Ex. Justesse unisson, Exercice de vocalise..."
+                value={newLessonName}
+                onChange={(e) => setNewLessonName(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm outline-none focus:border-[#B686EC] transition-all"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-white/80 text-xs font-semibold">Consignes de l'exercice</label>
+              <textarea
+                placeholder="Ex. Écoutez attentivement le modèle vocal puis reproduisez-le en chantant..."
+                value={newExercisePrompt}
+                onChange={(e) => setNewExercisePrompt(e.target.value)}
+                rows={2}
+                className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm outline-none focus:border-[#B686EC] transition-all"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-white/80 text-xs font-semibold">Fichier audio de référence (Modèle) *</label>
+              <div className="flex flex-col gap-2 p-3 rounded-2xl border border-dashed border-white/10 bg-white/5 items-center justify-center">
+                <input
+                  type="file"
+                  accept="audio/*"
+                  onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
+                  className="hidden"
+                  id="exercise-audio-upload"
+                />
+                <label
+                  htmlFor="exercise-audio-upload"
+                  className="flex flex-col items-center gap-1 cursor-pointer text-center"
+                >
+                  <span className="text-xl">🎵</span>
+                  <span className="text-xs font-bold text-primary hover:underline">Importer un fichier audio</span>
+                  <span className="text-[10px] text-white/40">Formats supportés : MP3, WAV, M4A</span>
+                </label>
+                {audioFile && (
+                  <div className="text-[11px] text-emerald-400 font-semibold mt-1">
+                    Fichier sélectionné : {audioFile.name} ({(audioFile.size / 1024 / 1024).toFixed(2)} Mo)
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setExerciseLessonDialog(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold hover:bg-white/5 transition-colors text-white/70"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={createExerciseLesson}
+                disabled={uploadingAudio || !newLessonName.trim() || !audioFile}
+                className="px-4 py-2 bg-gradient-to-r from-primary to-secondary text-[#071008] rounded-xl text-xs font-bold hover:opacity-95 disabled:opacity-50 transition-opacity shadow-lg shadow-primary/20 flex items-center gap-1.5"
+              >
+                {uploadingAudio && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {uploadingAudio ? 'Création...' : 'Créer l\'exercice'}
               </button>
             </div>
           </div>

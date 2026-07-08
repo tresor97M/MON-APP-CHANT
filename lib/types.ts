@@ -247,6 +247,7 @@ export type Announcement = {
   audience_voice: VoicePart | null;
   created_by: string | null;
   created_at: string;
+  publish_at?: string;
 };
 
 export type ChoirStats = {
