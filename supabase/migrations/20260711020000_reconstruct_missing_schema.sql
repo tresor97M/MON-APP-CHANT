@@ -204,6 +204,16 @@ CREATE TABLE IF NOT EXISTS public.training_modules (
   xp_reward integer NOT NULL DEFAULT 10,
   sort_order integer NOT NULL DEFAULT 0
 );
+-- La table pouvait déjà exister sans toutes ses colonnes (migrations
+-- antérieures jamais appliquées) : on les garantit explicitement.
+ALTER TABLE public.training_modules ADD COLUMN IF NOT EXISTS path_id uuid REFERENCES public.training_paths(id) ON DELETE CASCADE;
+ALTER TABLE public.training_modules ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE public.training_modules ADD COLUMN IF NOT EXISTS content text;
+ALTER TABLE public.training_modules ADD COLUMN IF NOT EXISTS resource_url text;
+ALTER TABLE public.training_modules ADD COLUMN IF NOT EXISTS hymn_id uuid REFERENCES public.hymns(id) ON DELETE SET NULL;
+ALTER TABLE public.training_modules ADD COLUMN IF NOT EXISTS lesson_id uuid REFERENCES public.lessons(id) ON DELETE SET NULL;
+ALTER TABLE public.training_modules ADD COLUMN IF NOT EXISTS xp_reward integer NOT NULL DEFAULT 10;
+ALTER TABLE public.training_modules ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0;
 ALTER TABLE public.training_modules ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "training_modules_select" ON public.training_modules;
 CREATE POLICY "training_modules_select" ON public.training_modules FOR SELECT TO authenticated USING (true);
@@ -256,6 +266,16 @@ CREATE TABLE IF NOT EXISTS public.announcements (
   created_at timestamptz DEFAULT now(),
   publish_at timestamptz NOT NULL DEFAULT now()
 );
+-- La table pouvait déjà exister sans toutes ses colonnes (ex: publish_at,
+-- ajoutée par 20260708_announcements_publish_at.sql, jamais appliquée en prod).
+ALTER TABLE public.announcements ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE public.announcements ADD COLUMN IF NOT EXISTS content text;
+ALTER TABLE public.announcements ADD COLUMN IF NOT EXISTS pinned boolean NOT NULL DEFAULT false;
+ALTER TABLE public.announcements ADD COLUMN IF NOT EXISTS audience_role text;
+ALTER TABLE public.announcements ADD COLUMN IF NOT EXISTS audience_voice text;
+ALTER TABLE public.announcements ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.announcements ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+ALTER TABLE public.announcements ADD COLUMN IF NOT EXISTS publish_at timestamptz NOT NULL DEFAULT now();
 ALTER TABLE public.announcements ENABLE ROW LEVEL SECURITY;
 
 -- ============ CHOIR STATS ============
