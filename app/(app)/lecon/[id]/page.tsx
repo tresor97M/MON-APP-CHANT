@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Maestro, getMaestroMessage } from '@/components/maestro';
 import { AudioVisualizer, PulsingOrb } from '@/components/audio-visualizer';
 import { cn } from '@/lib/utils';
+import { autoCorrelate, hzToMidi, hzToNoteName, computePitchAccuracy, playPianoTone } from '@/lib/pitch';
 
 type Phase = 'intro' | 'practice' | 'listening' | 'analyzing' | 'result' | 'complete';
 type Feedback = { score: number; accuracy: number; points: { label: string; value: number; status: 'good' | 'ok' | 'bad' }[]; tip: string };
@@ -48,59 +49,6 @@ const TIPS = [
   'Le vibrato vient naturellement quand la voix est libre — ne le force pas.',
 ];
 
-function autoCorrelate(buffer: Float32Array, sampleRate: number): number {
-  const SIZE = buffer.length;
-  let sum = 0;
-  for (let i = 0; i < SIZE; i++) {
-    sum += buffer[i] * buffer[i];
-  }
-  const rms = Math.sqrt(sum / SIZE);
-  if (rms < 0.005) return -1; // Volume trop faible
-
-  let r1 = 0, r2 = SIZE - 1;
-  const thres = 0.15;
-  for (let i = 0; i < SIZE / 2; i++) {
-    if (Math.abs(buffer[i]) < thres) { r1 = i; break; }
-  }
-  for (let i = SIZE - 1; i >= SIZE / 2; i--) {
-    if (Math.abs(buffer[i]) < thres) { r2 = i; break; }
-  }
-
-  const buf = buffer.subarray(r1, r2);
-  const len = buf.length;
-  if (len < 64) return -1;
-
-  const correlations = new Float32Array(len);
-  for (let i = 0; i < len; i++) {
-    for (let j = 0; j < len - i; j++) {
-      correlations[i] += buf[j] * buf[j + i];
-    }
-  }
-
-  let d = 0;
-  while (correlations[d] > correlations[d + 1]) d++;
-  let maxval = -1;
-  let maxpos = -1;
-  for (let i = d; i < len; i++) {
-    if (correlations[i] > maxval) {
-      maxval = correlations[i];
-      maxpos = i;
-    }
-  }
-
-  let T0 = maxpos;
-  const hz = sampleRate / T0;
-  if (hz >= 60 && hz <= 1200) {
-    return hz;
-  }
-  return -1;
-}
-
-function hzToMidi(hz: number): number {
-  if (hz <= 0) return 0;
-  return 12 * (Math.log(hz / 440) / Math.log(2)) + 69;
-}
-
 export default function LessonPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const { celebrate, playSound } = useCelebration();
@@ -125,6 +73,8 @@ export default function LessonPage({ params }: { params: { id: string } }) {
   const [detectedNoteName, setDetectedNoteName] = useState<string>('');
   const [centsOff, setCentsOff] = useState<number>(0);
   const [tolerance, setTolerance] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [isPlayingPiano, setIsPlayingPiano] = useState(false);
+  const [hasListenedToPiano, setHasListenedToPiano] = useState(false);
 
   const current = exercises[currentIdx];
   const toleranceCents = tolerance === 'easy' ? 45 : tolerance === 'medium' ? 25 : 12;
@@ -156,28 +106,17 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     }
   };
 
-  const playReferenceTone = (hz: number) => {
-    if (typeof window !== 'undefined') {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioCtx();
-      const osc = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      
-      osc.type = 'sine';
-      osc.frequency.value = hz;
-      
-      gainNode.gain.setValueAtTime(0.25, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.3);
-      
-      osc.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      
-      osc.start();
-      osc.stop(ctx.currentTime + 1.3);
-    }
+  const playReferenceTone = async (hz: number) => {
+    setIsPlayingPiano(true);
+    await playPianoTone(hz);
+    setIsPlayingPiano(false);
+    setHasListenedToPiano(true);
   };
 
   const getExerciseTargetHz = () => {
+    const configuredHz = (current?.target as any)?.target_hz;
+    if (typeof configuredHz === 'number' && configuredHz > 0) return configuredHz;
+
     const name = current?.name?.toLowerCase() || '';
     if (name.includes('do3') || name.includes('c3')) return 130.81;
     if (name.includes('do4') || name.includes('c4')) return 261.63;
@@ -604,27 +543,30 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     }
 
     const hasCustomAudio = current?.target && (current.target as any).audio_url;
+    const isPitchExercise = current?.type === 'pitch';
     const similarityScore = hasCustomAudio ? comparePitchCurves(userPitchCurveRef.current, refPitchCurve) : -1;
+    // Score réel de justesse : comparaison en cents de la courbe de pitch
+    // captée en direct contre la note de référence jouée au piano.
+    const pitchAccuracyScore = isPitchExercise ? computePitchAccuracy(pitchHistoryRef.current, toleranceCents) : -1;
 
     const variance = data.reduce((acc, val) => acc + Math.pow(val - averageVolume, 2), 0) / data.length;
     const stability = Math.max(10, Math.min(100, Math.round(100 - (variance * 0.45))));
     const volumeMatch = Math.max(10, Math.min(100, Math.round(100 - Math.abs(30 - averageVolume) * 1.6)));
 
-    const finalPitchScore = hasCustomAudio ? similarityScore : stability;
+    const finalPitchScore = hasCustomAudio ? similarityScore : (isPitchExercise ? pitchAccuracyScore : stability);
     const baseScore = Math.round((finalPitchScore * 0.6) + (volumeMatch * 0.4));
-    
+
     // Analyse avancée (Vibrato & Attaque)
     const centsHistory = pitchHistoryRef.current.map(h => h.cents);
     const vibrato = detectVibrato(centsHistory);
     const cleanAttack = detectCleanAttack(centsHistory);
-    
+
     let bonusScore = 0;
-    const metric = (current?.scoring as Record<string, unknown>)?.metric as string | undefined;
     const points: any[] = [
-      { 
-        label: hasCustomAudio ? 'Similitude de mélodie' : (metric === 'pitch_accuracy' ? 'Précision de la hauteur' : 'Régularité diaphragmatique'), 
-        value: finalPitchScore, 
-        status: (finalPitchScore >= 75 ? 'good' : 'ok') as 'good' | 'ok' 
+      {
+        label: hasCustomAudio ? 'Similitude de mélodie' : (isPitchExercise ? 'Précision de la hauteur (vs piano)' : 'Régularité diaphragmatique'),
+        value: finalPitchScore,
+        status: (finalPitchScore >= 75 ? 'good' : 'ok') as 'good' | 'ok'
       },
       { label: 'Contrôle du débit d\'air', value: volumeMatch, status: (volumeMatch >= 75 ? 'good' : 'ok') as 'good' | 'ok' },
     ];
@@ -639,13 +581,10 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     }
 
     const finalScore = Math.min(100, baseScore + bonusScore);
-    const acc = Math.min(99, finalScore + Math.floor(Math.random() * 3));
-
-    // Ajouter l'intensité de l'effort
-    points.push({ label: 'Intensité de l\'effort', value: acc, status: (acc >= 75 ? 'good' : 'ok') as 'good' | 'ok' });
+    const acc = finalScore;
 
     setFeedback({ score: finalScore, accuracy: acc, points, tip: TIPS[Math.floor(Math.random() * TIPS.length)] });
-    
+
     // Enregistrement de la tentative physique dans Supabase
     if (current?.id) {
       supabase.from('attempts').insert({
@@ -654,7 +593,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
         score: finalScore,
         accuracy: acc,
         duration_ms: 4000,
-        feedback: { stability, volumeMatch, hasVibrato: vibrato.hasVibrato, cleanAttack }
+        feedback: { stability, pitchAccuracyScore, volumeMatch, hasVibrato: vibrato.hasVibrato, cleanAttack }
       }).then(({ error }) => {
         if (error) console.error('Erreur lors de l\'enregistrement de la tentative :', error.message);
       });
@@ -937,6 +876,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
       setScore(finalScore);
       setCurrentIdx((i) => i + 1);
       setFeedback(null);
+      setHasListenedToPiano(false);
       setMaestroMood('encouraging');
       setMaestroMsg('Allez, exercice suivant ! Tu gères.');
       setPhase('practice');
@@ -951,6 +891,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     setDetectedPitch(null);
     setDetectedNoteName('');
     setCentsOff(0);
+    setHasListenedToPiano(false);
     pitchHistoryRef.current = [];
     audioDataRef.current = [];
     if (current?.type === 'quiz') {
@@ -1094,6 +1035,28 @@ export default function LessonPage({ params }: { params: { id: string } }) {
             {/* MIC PRACTICE */}
             {!isQuiz && phase === 'practice' && (
               <div className="text-center py-6 space-y-4">
+                {current?.type === 'pitch' && (
+                  <div className="pb-1 animate-fade-in">
+                    <button
+                      onClick={() => playReferenceTone(getExerciseTargetHz())}
+                      disabled={isPlayingPiano}
+                      className={cn(
+                        'inline-flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-bold transition-all border shadow-lg',
+                        isPlayingPiano
+                          ? 'bg-primary/20 border-primary/40 text-primary animate-pulse'
+                          : 'bg-gradient-to-r from-primary/15 to-secondary/10 border-primary/30 hover:border-primary/50 text-foreground'
+                      )}
+                    >
+                      🎹 {isPlayingPiano ? 'Le piano joue...' : hasListenedToPiano ? 'Réécouter le piano' : 'Écouter la note au piano'}
+                    </button>
+                    <p className="text-[10px] text-muted-foreground/70 mt-2">
+                      {hasListenedToPiano
+                        ? 'Essaie de reproduire exactement cette hauteur.'
+                        : 'Écoute la note de référence avant de chanter, pour viser juste.'}
+                    </p>
+                  </div>
+                )}
+
                 <div className="relative w-28 h-28 mx-auto">
                   <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-primary/30 to-secondary/30 blur-xl animate-pulse" />
                   <PulsingOrb active className="w-28 h-28 shadow-lg shadow-primary/20 border border-primary/20" />
@@ -1165,18 +1128,20 @@ export default function LessonPage({ params }: { params: { id: string } }) {
                   <div className="text-left">
                     <span className="text-[10px] text-muted-foreground font-semibold block uppercase tracking-wider">Note Cible</span>
                     <span className="font-display text-base font-bold text-foreground">
-                      {current?.name?.includes('Do3') || current?.name?.includes('C3') ? 'Do3 (130.8 Hz)' :
-                       current?.name?.includes('Do4') || current?.name?.includes('C4') ? 'Do4 (261.6 Hz)' :
-                       current?.name?.includes('Sol3') || current?.name?.includes('G3') ? 'Sol3 (196.0 Hz)' :
-                       current?.name?.includes('La3') || current?.name?.includes('A3') ? 'La3 (220.0 Hz)' :
-                       'Note de référence (220 Hz)'}
+                      {hzToNoteName(getExerciseTargetHz())} ({getExerciseTargetHz().toFixed(1)} Hz)
                     </span>
                   </div>
-                  <button 
+                  <button
                     onClick={() => playReferenceTone(getExerciseTargetHz())}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-[10px] font-bold hover:bg-primary/20 transition-all"
+                    disabled={isPlayingPiano}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border',
+                      isPlayingPiano
+                        ? 'bg-primary/20 border-primary/40 text-primary animate-pulse'
+                        : 'bg-primary/10 border-primary/20 text-primary hover:bg-primary/20'
+                    )}
                   >
-                    <Volume2 className="w-3.5 h-3.5" /> Entendre le ton
+                    <Volume2 className="w-3.5 h-3.5" /> {isPlayingPiano ? 'Piano...' : '🎹 Entendre le piano'}
                   </button>
                 </div>
 
