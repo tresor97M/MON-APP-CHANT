@@ -10,7 +10,11 @@ import { useAuth } from '@/hooks/use-auth';
 import { Maestro, getMaestroMessage } from '@/components/maestro';
 import { AudioVisualizer, PulsingOrb } from '@/components/audio-visualizer';
 import { cn } from '@/lib/utils';
-import { autoCorrelate, hzToMidi, hzToNoteName, computePitchAccuracy, playPianoTone } from '@/lib/pitch';
+import {
+  autoCorrelate, hzToMidi, hzToNoteName, computePitchAccuracy, playPianoTone,
+  playVoiceTone, playVibratoExample, playMelodySequence, playHarmonyChord,
+  playBreathingGuide, buildCurveFromNotes, type BreathingPhase,
+} from '@/lib/pitch';
 
 type Phase = 'intro' | 'practice' | 'listening' | 'analyzing' | 'result' | 'complete';
 type Feedback = { score: number; accuracy: number; points: { label: string; value: number; status: 'good' | 'ok' | 'bad' }[]; tip: string };
@@ -73,14 +77,16 @@ export default function LessonPage({ params }: { params: { id: string } }) {
   const [detectedNoteName, setDetectedNoteName] = useState<string>('');
   const [centsOff, setCentsOff] = useState<number>(0);
   const [tolerance, setTolerance] = useState<'easy' | 'medium' | 'hard'>('medium');
-  const [isPlayingPiano, setIsPlayingPiano] = useState(false);
-  const [hasListenedToPiano, setHasListenedToPiano] = useState(false);
+  const [isPlayingExample, setIsPlayingExample] = useState(false);
+  const [hasListenedToExample, setHasListenedToExample] = useState(false);
+  const [breathingPhase, setBreathingPhase] = useState<BreathingPhase | null>(null);
 
   const current = exercises[currentIdx];
   const toleranceCents = tolerance === 'easy' ? 45 : tolerance === 'medium' ? 25 : 12;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const pitchHistoryRef = useRef<{ cents: number; just: boolean }[]>([]);
+  const pitchHistoryRef = useRef<{ cents: number; just: boolean }[]>([]); // fenêtre glissante (50 pts) pour le rendu canvas
+  const fullPitchHistoryRef = useRef<{ cents: number; just: boolean }[]>([]); // historique complet (non tronqué) pour le scoring
   const userPitchCurveRef = useRef<number[]>([]);
   const refAudioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const [isPlayingRefAudio, setIsPlayingRefAudio] = useState(false);
@@ -106,15 +112,10 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     }
   };
 
-  const playReferenceTone = async (hz: number) => {
-    setIsPlayingPiano(true);
-    await playPianoTone(hz);
-    setIsPlayingPiano(false);
-    setHasListenedToPiano(true);
-  };
-
   const getExerciseTargetHz = () => {
-    const configuredHz = (current?.target as any)?.target_hz;
+    // target_pitch_hz est le nom historique (voir seed_data.sql) ; target_hz
+    // est accepté aussi pour la nouvelle configuration plus générique.
+    const configuredHz = (current?.target as any)?.target_pitch_hz ?? (current?.target as any)?.target_hz;
     if (typeof configuredHz === 'number' && configuredHz > 0) return configuredHz;
 
     const name = current?.name?.toLowerCase() || '';
@@ -125,6 +126,114 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     if (name.includes('mi3') || name.includes('e3')) return 164.81;
     return 220.00;
   };
+
+  // Durée d'enregistrement (secondes) : configurée par exercice (15s-60s
+  // selon la tâche), avec des valeurs par défaut sensées par type plutôt
+  // qu'un unique 4 secondes fixe pour tous les exercices.
+  const getExerciseDurationSec = () => {
+    const configured = (current?.target as any)?.duration_sec;
+    if (typeof configured === 'number' && configured > 0) return configured;
+    switch (current?.type) {
+      case 'breathing': return 20;
+      case 'melody': case 'vocalise': return 30;
+      case 'harmony': return 25;
+      case 'vibrato': return 20;
+      case 'pitch': default: return 15;
+    }
+  };
+
+  const getExerciseNotesHz = (): number[] => {
+    // `sequence` est le nom historique (voir seed_data.sql, exercice "Saut
+    // d'Octave"), `notes_hz` le nom générique pour les nouveaux exercices.
+    const configured = (current?.target as any)?.sequence ?? (current?.target as any)?.notes_hz;
+    if (Array.isArray(configured) && configured.length > 0) return configured;
+    const root = getExerciseTargetHz();
+    // Motif de secours : gamme 1-2-3-4-5-4-3-2-1 (vocalise classique) sur la note cible.
+    const steps = [0, 2, 4, 5, 7, 5, 4, 2, 0];
+    return steps.map((s) => root * Math.pow(2, s / 12));
+  };
+
+  const getExerciseNoteDurationSec = () => {
+    const configured = (current?.target as any)?.duration_per_note ?? (current?.target as any)?.note_duration_sec;
+    if (typeof configured === 'number' && configured > 0) return configured;
+    return 0.55;
+  };
+
+  const getExerciseChordHz = (): number[] => {
+    const configured = (current?.target as any)?.chord_hz;
+    if (Array.isArray(configured) && configured.length > 0) return configured;
+    const root = getExerciseTargetHz();
+    // Accord parfait majeur de secours (fondamentale, tierce, quinte).
+    return [root, root * Math.pow(2, 4 / 12), root * Math.pow(2, 7 / 12)];
+  };
+
+  const getBreathingPattern = () => {
+    const configured = (current?.target as any)?.pattern;
+    if (configured && typeof configured.inhale === 'number') return configured;
+    return { inhale: 4, hold: 4, exhale: 6 };
+  };
+
+  /** Joue l'exemple adapté au type de l'exercice courant, sur la même interface, avant l'enregistrement. */
+  const playCurrentExample = async () => {
+    if (!current || isPlayingExample) return;
+    setIsPlayingExample(true);
+    try {
+      switch (current.type) {
+        case 'vibrato':
+          await playVibratoExample(getExerciseTargetHz());
+          break;
+        case 'breathing': {
+          const legacyPattern = (current.target as any)?.pattern;
+          if (typeof legacyPattern === 'string') {
+            // Format historique (voir seed_data.sql) : un exercice = une seule
+            // phase ('inhale' | 'hold' | 'exhale_s'), pas un cycle complet.
+            const isHold = legacyPattern === 'hold';
+            const isExhale = legacyPattern.startsWith('exhale');
+            setBreathingPhase(isHold ? 'hold' : isExhale ? 'exhale' : 'inhale');
+            await playVoiceTone(isHold ? 523.25 : isExhale ? 261.63 : 392, 0.6);
+            await new Promise((r) => setTimeout(r, getExerciseDurationSec() * 1000));
+          } else {
+            await playBreathingGuide(getBreathingPattern(), (ph) => setBreathingPhase(ph));
+          }
+          setBreathingPhase(null);
+          break;
+        }
+        case 'melody':
+        case 'vocalise':
+          await playMelodySequence(getExerciseNotesHz(), getExerciseNoteDurationSec());
+          break;
+        case 'harmony':
+          await playHarmonyChord(getExerciseChordHz(), 2.5);
+          break;
+        case 'pitch':
+        default: {
+          // Un exercice "pitch" peut être une note tenue OU une courte
+          // séquence (ex: saut d'octave) — on joue les deux au piano.
+          const seq = getExerciseNotesHz();
+          const rawSequence = (current.target as any)?.sequence ?? (current.target as any)?.notes_hz;
+          if (Array.isArray(rawSequence) && rawSequence.length > 1) {
+            for (const hz of seq) await playPianoTone(hz, getExerciseNoteDurationSec());
+          } else {
+            await playPianoTone(getExerciseTargetHz());
+          }
+          break;
+        }
+      }
+    } finally {
+      setIsPlayingExample(false);
+      setHasListenedToExample(true);
+    }
+  };
+
+  const EXAMPLE_LABELS: Record<string, { icon: string; listen: string; hint: string }> = {
+    pitch: { icon: '🎹', listen: 'Écouter la note au piano', hint: 'Écoute la note de référence avant de chanter, pour viser juste.' },
+    vibrato: { icon: '🎤', listen: 'Écouter l\'exemple avec vibrato', hint: 'Repère l\'oscillation régulière de la hauteur, puis reproduis-la.' },
+    breathing: { icon: '🫁', listen: 'Écouter le guide de respiration', hint: 'Suis le rythme inspire / tiens / expire indiqué par les repères sonores.' },
+    melody: { icon: '🎵', listen: 'Écouter la mélodie modèle', hint: 'Mémorise la phrase mélodique avant de la chanter.' },
+    vocalise: { icon: '🎼', listen: 'Écouter le motif de vocalise', hint: 'Reproduis exactement l\'enchaînement de notes joué.' },
+    harmony: { icon: '🎶', listen: 'Écouter l\'accord d\'harmonisation', hint: 'Chante ta note pour compléter l\'accord que tu entends.' },
+  };
+  const exampleInfo = EXAMPLE_LABELS[current?.type || 'pitch'] || EXAMPLE_LABELS.pitch;
 
   useEffect(() => {
     if (maestroMsg && phase !== 'complete') {
@@ -171,6 +280,18 @@ export default function LessonPage({ params }: { params: { id: string } }) {
       refAudioPlayerRef.current.pause();
       refAudioPlayerRef.current = null;
       setIsPlayingRefAudio(false);
+    }
+
+    // Toute cible à plusieurs notes sans fichier audio uploadé (mélodie,
+    // vocalise, ou un exercice "pitch" historique avec une séquence comme
+    // le saut d'octave) : on synthétise une courbe de référence à partir de
+    // la suite de notes cible (même format que la courbe décodée d'un vrai
+    // fichier), pour réutiliser le même rendu et le même scoring.
+    const rawSequence = (current?.target as any)?.sequence ?? (current?.target as any)?.notes_hz;
+    const hasMultiNoteTarget = Array.isArray(rawSequence) && rawSequence.length > 1;
+    if (current && hasMultiNoteTarget && !(current.target as any)?.audio_url) {
+      setRefPitchCurve(buildCurveFromNotes(getExerciseNotesHz(), getExerciseNoteDurationSec()));
+      return;
     }
 
     if (!current || current.type !== 'pitch' || !current.target || !(current.target as any).audio_url) {
@@ -325,8 +446,10 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     }
 
     // 2. Dessiner le Tunnel de Note Cible (Mélodie)
-    const hasCustomAudio = current?.target && (current.target as any).audio_url;
-    if (hasCustomAudio && refPitchCurve.length > 0) {
+    // Une courbe de référence existe soit pour un audio uploadé (pitch),
+    // soit pour une mélodie/vocalise synthétisée à partir de notes.
+    const hasReferenceCurve = refPitchCurve.length > 0;
+    if (hasReferenceCurve) {
       // Dessin des rectangles cibles pour l'audio personnalisé
       const sliceWidth = width / refPitchCurve.length;
       for (let i = 0; i < refPitchCurve.length; i++) {
@@ -383,21 +506,22 @@ export default function LessonPage({ params }: { params: { id: string } }) {
       const targetHz = getExerciseTargetHz();
       const targetMidi = hzToMidi(targetHz);
 
+      const lastIdx = Math.max(1, history.length - 1);
       for (let i = 0; i < history.length; i++) {
         const pt = history[i];
-        
+
         // Calcul du MIDI réel de l'utilisateur basé sur les cents de déviation
-        const refHzAtStep = (hasCustomAudio && refPitchCurve.length > 0)
-          ? refPitchCurve[Math.floor((i / 49) * (refPitchCurve.length - 1))]
+        const refHzAtStep = hasReferenceCurve
+          ? refPitchCurve[Math.floor((i / lastIdx) * (refPitchCurve.length - 1))]
           : targetHz;
-          
+
         if (!refHzAtStep || refHzAtStep <= 0) continue;
         const refMidiAtStep = hzToMidi(refHzAtStep);
         const userMidi = refMidiAtStep + (pt.cents / 100);
-        
+
         const y = getMidiY(userMidi);
-        const x = (i / 49) * width;
-        const opacity = (i / 49); // fade in de la trace historique
+        const x = (i / lastIdx) * width;
+        const opacity = (i / lastIdx); // fade in de la trace historique
 
         // Dessiner chaque point comme une particule lumineuse
         ctx.shadowBlur = pt.just ? 8 : 4;
@@ -416,15 +540,15 @@ export default function LessonPage({ params }: { params: { id: string } }) {
 
       // Dessiner le curseur actif à l'extrémité
       const lastPoint = history[history.length - 1];
-      const refHzLast = (hasCustomAudio && refPitchCurve.length > 0)
+      const refHzLast = hasReferenceCurve
         ? refPitchCurve[refPitchCurve.length - 1]
         : targetHz;
-      
+
       if (refHzLast > 0) {
         const refMidiLast = hzToMidi(refHzLast);
         const userMidiLast = refMidiLast + (lastPoint.cents / 100);
         const lastY = getMidiY(userMidiLast);
-        const lastX = ((history.length - 1) / 49) * width;
+        const lastX = ((history.length - 1) / lastIdx) * width;
 
         ctx.shadowBlur = 15;
         ctx.shadowColor = lastPoint.just ? '#22c55e' : '#f97316';
@@ -542,36 +666,66 @@ export default function LessonPage({ params }: { params: { id: string } }) {
       return;
     }
 
-    const hasCustomAudio = current?.target && (current.target as any).audio_url;
-    const isPitchExercise = current?.type === 'pitch';
-    const similarityScore = hasCustomAudio ? comparePitchCurves(userPitchCurveRef.current, refPitchCurve) : -1;
+    // Une courbe de référence existe pour un audio uploadé (pitch) ou une
+    // mélodie/vocalise synthétisée à partir de notes cibles.
+    const hasReferenceCurve = refPitchCurve.length > 0;
+    const isPitchLike = current?.type === 'pitch' || current?.type === 'harmony' || current?.type === 'vibrato';
+    const similarityScore = hasReferenceCurve ? comparePitchCurves(userPitchCurveRef.current, refPitchCurve) : -1;
     // Score réel de justesse : comparaison en cents de la courbe de pitch
-    // captée en direct contre la note de référence jouée au piano.
-    const pitchAccuracyScore = isPitchExercise ? computePitchAccuracy(pitchHistoryRef.current, toleranceCents) : -1;
+    // captée en direct contre la note (ou l'accord) de référence.
+    const pitchAccuracyScore = isPitchLike ? computePitchAccuracy(fullPitchHistoryRef.current, toleranceCents) : -1;
 
     const variance = data.reduce((acc, val) => acc + Math.pow(val - averageVolume, 2), 0) / data.length;
     const stability = Math.max(10, Math.min(100, Math.round(100 - (variance * 0.45))));
     const volumeMatch = Math.max(10, Math.min(100, Math.round(100 - Math.abs(30 - averageVolume) * 1.6)));
 
-    const finalPitchScore = hasCustomAudio ? similarityScore : (isPitchExercise ? pitchAccuracyScore : stability);
-    const baseScore = Math.round((finalPitchScore * 0.6) + (volumeMatch * 0.4));
-
-    // Analyse avancée (Vibrato & Attaque)
-    const centsHistory = pitchHistoryRef.current.map(h => h.cents);
+    // Analyse avancée (Vibrato & Attaque) — sur l'historique complet, pas la fenêtre glissante d'affichage.
+    const centsHistory = fullPitchHistoryRef.current.map(h => h.cents);
     const vibrato = detectVibrato(centsHistory);
     const cleanAttack = detectCleanAttack(centsHistory);
 
+    let finalPitchScore: number;
+    let primaryLabel: string;
+    if (hasReferenceCurve) {
+      finalPitchScore = similarityScore;
+      primaryLabel = current?.type === 'vocalise' ? 'Précision du motif de vocalise' : 'Similitude de mélodie';
+    } else if (current?.type === 'vibrato') {
+      // Pour un exercice de vibrato, la qualité du vibrato (régularité du
+      // taux ~4-8Hz et de la profondeur ~15-60 cents) prime sur la simple
+      // justesse — c'est l'objet même de l'exercice.
+      const vibratoQuality = vibrato.hasVibrato
+        ? Math.max(40, Math.round(100 - Math.abs(vibrato.rateHz - 6) * 8 - Math.abs(vibrato.depthCents - 35) * 0.5))
+        : 20;
+      finalPitchScore = Math.round(pitchAccuracyScore * 0.4 + vibratoQuality * 0.6);
+      primaryLabel = 'Qualité du vibrato';
+    } else if (current?.type === 'harmony') {
+      finalPitchScore = pitchAccuracyScore;
+      primaryLabel = 'Justesse de la voix d\'harmonie';
+    } else if (current?.type === 'pitch') {
+      finalPitchScore = pitchAccuracyScore;
+      primaryLabel = 'Précision de la hauteur (vs piano)';
+    } else {
+      finalPitchScore = stability;
+      primaryLabel = 'Régularité diaphragmatique';
+    }
+
+    const baseScore = Math.round((finalPitchScore * 0.6) + (volumeMatch * 0.4));
+
     let bonusScore = 0;
     const points: any[] = [
-      {
-        label: hasCustomAudio ? 'Similitude de mélodie' : (isPitchExercise ? 'Précision de la hauteur (vs piano)' : 'Régularité diaphragmatique'),
-        value: finalPitchScore,
-        status: (finalPitchScore >= 75 ? 'good' : 'ok') as 'good' | 'ok'
-      },
+      { label: primaryLabel, value: finalPitchScore, status: (finalPitchScore >= 75 ? 'good' : 'ok') as 'good' | 'ok' },
       { label: 'Contrôle du débit d\'air', value: volumeMatch, status: (volumeMatch >= 75 ? 'good' : 'ok') as 'good' | 'ok' },
     ];
 
-    if (vibrato.hasVibrato) {
+    if (current?.type === 'breathing') {
+      const activeFrames = data.filter((v) => v > 8).length;
+      const sustainRatio = Math.round((activeFrames / data.length) * 100);
+      points.push({ label: 'Tenue du souffle', value: sustainRatio, status: (sustainRatio >= 75 ? 'good' : 'ok') as 'good' | 'ok' });
+    }
+
+    // Le vibrato reste une note principale pour l'exercice dédié — on ne
+    // le remonte en bonus que pour les autres types (pitch/mélodie...).
+    if (current?.type !== 'vibrato' && vibrato.hasVibrato) {
       points.push({ label: `Bonus Vibrato (${vibrato.rateHz} Hz)`, value: 15, status: 'good' });
       bonusScore += 15;
     }
@@ -592,7 +746,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
         user_id: user?.id,
         score: finalScore,
         accuracy: acc,
-        duration_ms: 4000,
+        duration_ms: getExerciseDurationSec() * 1000,
         feedback: { stability, pitchAccuracyScore, volumeMatch, hasVibrato: vibrato.hasVibrato, cleanAttack }
       }).then(({ error }) => {
         if (error) console.error('Erreur lors de l\'enregistrement de la tentative :', error.message);
@@ -619,11 +773,14 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     
     audioDataRef.current = [];
     pitchHistoryRef.current = [];
+    fullPitchHistoryRef.current = [];
     userPitchCurveRef.current = [];
     setDetectedPitch(null);
     setDetectedNoteName('');
     setCentsOff(0);
-    
+
+    const durationTicks = getExerciseDurationSec() * 10; // 1 tick = 100ms
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -664,27 +821,25 @@ export default function LessonPage({ params }: { params: { id: string } }) {
           if (pitch !== -1 && rms > 0.015) {
             setDetectedPitch(Math.round(pitch));
             userPitchCurveRef.current.push(pitch);
-            
-            // Conversion fréquence en note musicale midi
-            const noteNum = 12 * (Math.log(pitch / 440) / Math.log(2));
-            const noteIndex = Math.round(noteNum) + 69;
-            const notes = ["Do", "Do#", "Ré", "Ré#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"];
-            const noteName = notes[noteIndex % 12] + (Math.floor(noteIndex / 12) - 1);
-            setDetectedNoteName(noteName);
-            
+            setDetectedNoteName(hzToNoteName(pitch));
+
             // Calcul de la déviation en cents par rapport à la note cible
             const targetHz = getExerciseTargetHz();
             const cents = Math.round(1200 * Math.log2(pitch / targetHz));
             setCentsOff(Math.max(-50, Math.min(50, cents)));
 
-            // Enregistrer dans l'historique
-            pitchHistoryRef.current.push({ cents, just: Math.abs(cents) <= toleranceCents });
+            // Enregistrer dans l'historique (fenêtre glissante pour le dessin + historique complet pour le score)
+            const entry = { cents, just: Math.abs(cents) <= toleranceCents };
+            pitchHistoryRef.current.push(entry);
+            fullPitchHistoryRef.current.push(entry);
           } else {
             setDetectedPitch(null);
             userPitchCurveRef.current.push(-1);
             setDetectedNoteName('');
             setCentsOff(0);
-            pitchHistoryRef.current.push({ cents: 0, just: false });
+            const entry = { cents: 0, just: false };
+            pitchHistoryRef.current.push(entry);
+            fullPitchHistoryRef.current.push(entry);
           }
 
           if (pitchHistoryRef.current.length > 50) {
@@ -703,7 +858,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
           });
         }
 
-        if (t > 40) { // 4 secondes de capture réelle
+        if (t > durationTicks) {
           stopSim();
           setPhase('analyzing');
           setMaestroMood('thinking');
@@ -726,7 +881,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
           }
           return next;
         });
-        if (t > 30) {
+        if (t > durationTicks) {
           stopSim();
           setPhase('analyzing');
           setMaestroMood('thinking');
@@ -876,7 +1031,8 @@ export default function LessonPage({ params }: { params: { id: string } }) {
       setScore(finalScore);
       setCurrentIdx((i) => i + 1);
       setFeedback(null);
-      setHasListenedToPiano(false);
+      setHasListenedToExample(false);
+      setBreathingPhase(null);
       setMaestroMood('encouraging');
       setMaestroMsg('Allez, exercice suivant ! Tu gères.');
       setPhase('practice');
@@ -891,8 +1047,10 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     setDetectedPitch(null);
     setDetectedNoteName('');
     setCentsOff(0);
-    setHasListenedToPiano(false);
+    setHasListenedToExample(false);
+    setBreathingPhase(null);
     pitchHistoryRef.current = [];
+    fullPitchHistoryRef.current = [];
     audioDataRef.current = [];
     if (current?.type === 'quiz') {
       startQuiz();
@@ -1035,36 +1193,58 @@ export default function LessonPage({ params }: { params: { id: string } }) {
             {/* MIC PRACTICE */}
             {!isQuiz && phase === 'practice' && (
               <div className="text-center py-6 space-y-4">
-                {current?.type === 'pitch' && (
+                {current?.type && current.type !== 'quiz' && (
                   <div className="pb-1 animate-fade-in">
                     <button
-                      onClick={() => playReferenceTone(getExerciseTargetHz())}
-                      disabled={isPlayingPiano}
+                      onClick={playCurrentExample}
+                      disabled={isPlayingExample}
                       className={cn(
                         'inline-flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-bold transition-all border shadow-lg',
-                        isPlayingPiano
+                        isPlayingExample
                           ? 'bg-primary/20 border-primary/40 text-primary animate-pulse'
                           : 'bg-gradient-to-r from-primary/15 to-secondary/10 border-primary/30 hover:border-primary/50 text-foreground'
                       )}
                     >
-                      🎹 {isPlayingPiano ? 'Le piano joue...' : hasListenedToPiano ? 'Réécouter le piano' : 'Écouter la note au piano'}
+                      {exampleInfo.icon} {isPlayingExample ? 'Lecture de l\'exemple...' : hasListenedToExample ? 'Réécouter l\'exemple' : exampleInfo.listen}
                     </button>
-                    <p className="text-[10px] text-muted-foreground/70 mt-2">
-                      {hasListenedToPiano
-                        ? 'Essaie de reproduire exactement cette hauteur.'
-                        : 'Écoute la note de référence avant de chanter, pour viser juste.'}
+                    <p className="text-[10px] text-muted-foreground/70 mt-2 max-w-xs mx-auto">
+                      {exampleInfo.hint}
                     </p>
+
+                    {/* Guide visuel de respiration, piloté par la phase en cours pendant l'exemple */}
+                    {current.type === 'breathing' && breathingPhase && (
+                      <div className="mt-4 flex flex-col items-center gap-2 animate-fade-in">
+                        <div
+                          className="rounded-full border-2 border-primary/50 bg-primary/10 transition-all ease-in-out"
+                          style={{
+                            width: breathingPhase === 'inhale' ? 88 : breathingPhase === 'hold' ? 88 : 44,
+                            height: breathingPhase === 'inhale' ? 88 : breathingPhase === 'hold' ? 88 : 44,
+                            transitionDuration: `${getBreathingPattern()[breathingPhase] || 2}s`,
+                          }}
+                        />
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
+                          {breathingPhase === 'inhale' ? 'Inspire...' : breathingPhase === 'hold' ? 'Tiens...' : 'Expire...'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
                 <div className="relative w-28 h-28 mx-auto">
                   <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-primary/30 to-secondary/30 blur-xl animate-pulse" />
                   <PulsingOrb active className="w-28 h-28 shadow-lg shadow-primary/20 border border-primary/20" />
-                  <button onClick={startRecording} className="absolute inset-0 grid place-items-center text-white hover:scale-105 active:scale-95 transition-transform">
+                  <button
+                    onClick={startRecording}
+                    disabled={isPlayingExample}
+                    className="absolute inset-0 grid place-items-center text-white hover:scale-105 active:scale-95 transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
+                    title={isPlayingExample ? 'Attends la fin de l\'exemple avant d\'enregistrer' : undefined}
+                  >
                     <Mic className="w-10 h-10 drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]" />
                   </button>
                 </div>
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest animate-pulse">Appuie et chante</p>
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest animate-pulse">
+                  {isPlayingExample ? 'Écoute d\'abord...' : `Appuie et chante (${getExerciseDurationSec()}s)`}
+                </p>
 
                 {current?.target && (current.target as any).audio_url && (
                   <div className="pt-2 animate-fade-in">
@@ -1123,26 +1303,27 @@ export default function LessonPage({ params }: { params: { id: string } }) {
             {/* LISTENING & PITCH HIGHWAY (Yousician style) */}
             {phase === 'listening' && (
               <div className="py-4 space-y-6 animate-fade-in">
-                {/* Note target & audio cue */}
+                {/* Note target & recording indicator — pas de lecture de l'exemple ici : le
+                    micro capte déjà, rejouer le son maintenant le ferait s'enregistrer lui-même. */}
                 <div className="flex items-center justify-between border-b border-border/40 pb-3 gap-2">
                   <div className="text-left">
-                    <span className="text-[10px] text-muted-foreground font-semibold block uppercase tracking-wider">Note Cible</span>
+                    <span className="text-[10px] text-muted-foreground font-semibold block uppercase tracking-wider">
+                      {current?.type === 'breathing' ? 'Exercice' : current?.type === 'melody' || current?.type === 'vocalise' ? 'Motif à reproduire' : current?.type === 'harmony' ? 'Ta voix dans l\'accord' : 'Note Cible'}
+                    </span>
                     <span className="font-display text-base font-bold text-foreground">
-                      {hzToNoteName(getExerciseTargetHz())} ({getExerciseTargetHz().toFixed(1)} Hz)
+                      {current?.type === 'breathing'
+                        ? `Souffle guidé (${getExerciseDurationSec()}s)`
+                        : `${hzToNoteName(getExerciseTargetHz())} (${getExerciseTargetHz().toFixed(1)} Hz)`}
                     </span>
                   </div>
-                  <button
-                    onClick={() => playReferenceTone(getExerciseTargetHz())}
-                    disabled={isPlayingPiano}
+                  <div
                     className={cn(
-                      'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border',
-                      isPlayingPiano
-                        ? 'bg-primary/20 border-primary/40 text-primary animate-pulse'
-                        : 'bg-primary/10 border-primary/20 text-primary hover:bg-primary/20'
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold border',
+                      'bg-destructive/10 border-destructive/20 text-destructive animate-pulse'
                     )}
                   >
-                    <Volume2 className="w-3.5 h-3.5" /> {isPlayingPiano ? 'Piano...' : '🎹 Entendre le piano'}
-                  </button>
+                    <Mic className="w-3.5 h-3.5" /> Enregistrement...
+                  </div>
                 </div>
 
                 {/* Pitch Display Center */}
