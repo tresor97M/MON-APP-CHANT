@@ -264,6 +264,9 @@ export default function MessagesPage() {
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const callManagerRef = useRef<WebRTCCallManager | null>(null);
+  // Type d'appel courant, mis à jour dès l'initiation/acceptation (pas dérivé
+  // du DOM) pour router le flux distant sans dépendre du timing de rendu.
+  const activeCallTypeRef = useRef<CallType>('audio');
 
   // ── Misc refs ─────────────────────────────────────────────────────────────
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -316,8 +319,16 @@ export default function MessagesPage() {
         if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
       },
       onRemoteStream: (stream) => {
-        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = stream;
-        if (remoteAudioRef.current) remoteAudioRef.current.srcObject = stream;
+        // Un seul élément doit lire le flux distant : le <video> contient déjà
+        // la piste audio pour un appel vidéo. Le faire jouer aussi par l'<audio>
+        // caché produisait un écho (le même son lu deux fois en parallèle).
+        if (activeCallTypeRef.current === 'video') {
+          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = stream;
+          if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+        } else {
+          if (remoteAudioRef.current) remoteAudioRef.current.srcObject = stream;
+          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+        }
       },
       onError: (err) => console.error('[WebRTC Error]', err),
     });
@@ -677,6 +688,7 @@ export default function MessagesPage() {
   // ── Calls ─────────────────────────────────────────────────────────────────
   const initiateCall = async (callType: CallType) => {
     if (!activeThread || !callManagerRef.current || activeThread.kind === 'group') return;
+    activeCallTypeRef.current = callType;
     setCallState({ phase: 'ringing-out', callType, contact: activeThread });
     try {
       const localStream = await callManagerRef.current.startCall(activeThread.otherUserId!, callType);
@@ -689,12 +701,14 @@ export default function MessagesPage() {
 
   const acceptCall = async () => {
     if (callState.phase !== 'ringing-in' || !callManagerRef.current) return;
+    activeCallTypeRef.current = callState.info.callType;
     try {
+      // La transition vers 'connected' (état, timer, son) est déjà gérée par
+      // le callback onCallConnected du manager — pas besoin de la refaire ici,
+      // ça doublait le son de connexion et créait un second setInterval
+      // (timer d'appel qui dérivait, l'un des deux n'étant jamais nettoyé).
       const localStream = await callManagerRef.current.acceptCall(callState.info);
       if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
-      setCallState({ phase: 'connected', callType: callState.info.callType, startedAt: Date.now() });
-      callTimerRef.current = setInterval(() => setCallDuration(d => d + 1), 1000);
-      playCallConnectedSound();
     } catch {
       alert(lbl('Impossible d\'accepter l\'appel.', 'Could not accept the call.'));
     }

@@ -23,7 +23,7 @@ export type Lesson = {
 };
 export type Exercise = {
   id: string; lesson_id: string; name: string;
-  type: 'breathing' | 'pitch' | 'rhythm' | 'quiz';
+  type: 'breathing' | 'pitch' | 'rhythm' | 'quiz' | 'vibrato' | 'melody' | 'vocalise' | 'harmony';
   prompt: string; target: Record<string, unknown> | null;
   scoring: Record<string, unknown> | null; sort_order: number;
 };

@@ -133,3 +133,185 @@ export function playPianoTone(hz: number, durationSec = 1.4): Promise<void> {
 export function midiToHz(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
+
+// ============================================================
+// Exemples audio par type d'exercice — chaque type d'exercice a une
+// démonstration adaptée à sa nature (instrument, voix, harmonie,
+// respiration) plutôt qu'un unique ton de piano générique.
+// ============================================================
+
+function getAudioCtx(): AudioContext {
+  const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+  return new AudioCtx();
+}
+
+/**
+ * Timbre "voix" (sawtooth + filtre passe-bas) plutôt que le timbre
+ * "piano" (harmoniques sinusoïdales) — utilisé pour les exemples chant/
+ * vocalise/harmonisation, qui sont des exercices vocaux et non
+ * instrumentaux.
+ */
+export function playVoiceTone(hz: number, durationSec = 0.8, ctx?: AudioContext): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') return resolve();
+    const audioCtx = ctx ?? getAudioCtx();
+    const now = audioCtx.currentTime;
+
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = hz;
+
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = hz * 2.5 + 600;
+    filter.Q.value = 0.7;
+
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.22, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + durationSec);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start(now);
+    osc.stop(now + durationSec);
+    osc.onended = () => {
+      if (!ctx) audioCtx.close();
+      resolve();
+    };
+  });
+}
+
+/** Joue une note tenue avec un vibrato (LFO modulant la fréquence), pour démontrer le mouvement attendu. */
+export function playVibratoExample(hz: number, durationSec = 2.2): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') return resolve();
+    const ctx = getAudioCtx();
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = hz;
+
+    // LFO ~5.5Hz modulant la fréquence de ±25 cents, typique d'un vibrato vocal.
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 5.5;
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = hz * (Math.pow(2, 25 / 1200) - 1);
+    lfo.connect(lfoDepth);
+    lfoDepth.connect(osc.frequency);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = hz * 2.5 + 600;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.22, now + 0.15);
+    gain.gain.setValueAtTime(0.22, now + durationSec - 0.3);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + durationSec);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    lfo.start(now);
+    osc.start(now);
+    lfo.stop(now + durationSec);
+    osc.stop(now + durationSec);
+    osc.onended = () => {
+      ctx.close();
+      resolve();
+    };
+  });
+}
+
+/** Joue une séquence de notes (mélodie ou vocalise) l'une après l'autre, timbre voix. */
+export async function playMelodySequence(notesHz: number[], noteDurationSec = 0.55): Promise<void> {
+  for (const hz of notesHz) {
+    if (hz > 0) await playVoiceTone(hz, noteDurationSec);
+    else await new Promise((r) => setTimeout(r, noteDurationSec * 1000));
+  }
+}
+
+/** Joue plusieurs notes simultanément (accord d'harmonisation) pendant durationSec. */
+export function playHarmonyChord(chordHz: number[], durationSec = 2.5): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || chordHz.length === 0) return resolve();
+    const ctx = getAudioCtx();
+    let remaining = chordHz.length;
+    chordHz.forEach((hz) => {
+      playVoiceTone(hz, durationSec, ctx).then(() => {
+        remaining -= 1;
+        if (remaining === 0) {
+          ctx.close();
+          resolve();
+        }
+      });
+    });
+  });
+}
+
+export type BreathingPhase = 'inhale' | 'hold' | 'exhale';
+
+/**
+ * Guide de respiration rythmé : joue un repère sonore doux à chaque
+ * changement de phase (inspire/tiens/expire) et notifie l'UI via
+ * onPhase pour piloter une animation (cercle qui grandit/rétrécit).
+ */
+export async function playBreathingGuide(
+  pattern: { inhale: number; hold: number; exhale: number },
+  onPhase?: (phase: BreathingPhase, seconds: number) => void
+): Promise<void> {
+  const cue = (hz: number, durationSec: number) => {
+    if (typeof window === 'undefined') return;
+    const ctx = getAudioCtx();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(hz, now);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.12, now + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + durationSec);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + durationSec);
+    osc.onended = () => ctx.close();
+  };
+
+  const wait = (sec: number) => new Promise((r) => setTimeout(r, sec * 1000));
+
+  onPhase?.('inhale', pattern.inhale);
+  cue(392, 0.5); // Sol4, repère "inspire"
+  await wait(pattern.inhale);
+
+  onPhase?.('hold', pattern.hold);
+  cue(523.25, 0.25); // Do5, repère "tiens"
+  await wait(pattern.hold);
+
+  onPhase?.('exhale', pattern.exhale);
+  cue(261.63, 0.6); // Do4, repère "expire" (grave, long)
+  await wait(pattern.exhale);
+}
+
+/**
+ * Construit une courbe de pitch synthétique (même format que celle
+ * décodée depuis un fichier audio de référence) à partir d'une suite
+ * de notes — permet de réutiliser comparePitchCurves/le rendu du
+ * piano-roll pour les exercices de mélodie/vocalise sans fichier audio.
+ */
+export function buildCurveFromNotes(notesHz: number[], noteDurationSec: number, totalSlices = 80): number[] {
+  if (notesHz.length === 0) return [];
+  const totalDuration = notesHz.length * noteDurationSec;
+  const curve: number[] = [];
+  for (let i = 0; i < totalSlices; i++) {
+    const t = (i / totalSlices) * totalDuration;
+    const noteIdx = Math.min(notesHz.length - 1, Math.floor(t / noteDurationSec));
+    curve.push(notesHz[noteIdx] > 0 ? notesHz[noteIdx] : -1);
+  }
+  return curve;
+}
