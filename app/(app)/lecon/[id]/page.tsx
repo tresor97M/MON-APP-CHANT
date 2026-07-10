@@ -9,7 +9,8 @@ import { useCelebration } from '@/hooks/use-celebration';
 import { useAuth } from '@/hooks/use-auth';
 import { Maestro, getMaestroMessage } from '@/components/maestro';
 import { AudioVisualizer, PulsingOrb } from '@/components/audio-visualizer';
-import { cn } from '@/lib/utils';
+import { AnimatedNumber } from '@/components/ui/animated-number';
+import { cn, levelForXp } from '@/lib/utils';
 import {
   autoCorrelate, hzToMidi, hzToNoteName, computePitchAccuracy, playPianoTone,
   playVoiceTone, playVibratoExample, playMelodySequence, playHarmonyChord,
@@ -98,6 +99,13 @@ export default function LessonPage({ params }: { params: { id: string } }) {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioDataRef = useRef<number[]>([]);
+
+  // Capture audio brute pour l'avis qualitatif du Coach IA (Gemini)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null);
+  const [vocalFeedback, setVocalFeedback] = useState<string | null>(null);
+  const [loadingVocalFeedback, setLoadingVocalFeedback] = useState(false);
 
   // Speech synthesis for Coach Maestro
   const speakText = (text: string) => {
@@ -633,6 +641,10 @@ export default function LessonPage({ params }: { params: { id: string } }) {
   };
 
   const finishExercise = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    mediaRecorderRef.current = null;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -760,6 +772,42 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     setPhase('result');
   }, [current, playSound, refPitchCurve]);
 
+  const requestVocalFeedback = useCallback(async () => {
+    if (!recordedAudioBlob || !feedback) return;
+    setLoadingVocalFeedback(true);
+    setVocalFeedback(null);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1] || ''); // retire le préfixe data:audio/...;base64,
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(recordedAudioBlob);
+      });
+
+      const res = await fetch('/api/vocal-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audioBase64: base64,
+          mimeType: recordedAudioBlob.type,
+          exerciseName: current?.name,
+          exerciseType: current?.type,
+          score: feedback.score,
+        }),
+      });
+      const data = await res.json();
+      setVocalFeedback(data.feedback || data.error || 'Analyse indisponible pour le moment.');
+    } catch (err) {
+      console.error('Erreur avis vocal IA :', err);
+      setVocalFeedback('Impossible de contacter le Coach IA pour le moment.');
+    } finally {
+      setLoadingVocalFeedback(false);
+    }
+  }, [recordedAudioBlob, feedback, current]);
+
   const startRecording = useCallback(async () => {
     // Nettoyer le lecteur de référence
     if (refAudioPlayerRef.current) {
@@ -784,16 +832,37 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      
+
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       const audioCtx = new AudioCtx();
       audioContextRef.current = audioCtx;
-      
+
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 1024; 
+      analyser.fftSize = 1024;
       source.connect(analyser);
       analyserRef.current = analyser;
+
+      // Capture parallèle du fichier audio brut (indépendante de l'analyse
+      // de pitch en temps réel) pour permettre un avis qualitatif par l'IA
+      // après coup, en plus du score algorithmique.
+      recordedChunksRef.current = [];
+      setRecordedAudioBlob(null);
+      try {
+        const mimeType = ['audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
+          .find((t) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t));
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunksRef.current.push(e.data); };
+        recorder.onstop = () => {
+          if (recordedChunksRef.current.length > 0) {
+            setRecordedAudioBlob(new Blob(recordedChunksRef.current, { type: recorder.mimeType }));
+          }
+        };
+        recorder.start();
+        mediaRecorderRef.current = recorder;
+      } catch (recErr) {
+        console.error('MediaRecorder indisponible :', recErr);
+      }
 
       let t = 0;
       timerRef.current = setInterval(() => {
@@ -979,13 +1048,25 @@ export default function LessonPage({ params }: { params: { id: string } }) {
           const newTotalXp = us.total_xp + (lesson.xp_reward || 10);
           const newDailyXp = us.daily_xp + (lesson.xp_reward || 10);
           const newWeeklyXp = us.weekly_xp + (lesson.xp_reward || 10);
+          // `level` n'était jusqu'ici jamais recalculé nulle part dans le code
+          // (colonne figée à sa valeur de seed) — on le fait vivre ici.
+          const newLevel = levelForXp(newTotalXp);
+          const leveledUp = newLevel > (us.level || 1);
 
           await supabase.from('user_stats').update({
             total_xp: newTotalXp,
             daily_xp: newDailyXp,
             weekly_xp: newWeeklyXp,
+            level: newLevel,
             last_active_date: new Date().toISOString().slice(0, 10),
           }).eq('id', us.id);
+
+          if (leveledUp && typeof window !== 'undefined') {
+            // Se déclenche après la célébration de fin de leçon (voir plus bas).
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('los-levelup', { detail: { level: newLevel } }));
+            }, 900);
+          }
 
           // --- Système de Badges Dynamiques (Sprint 4) ---
           try {
@@ -1033,6 +1114,8 @@ export default function LessonPage({ params }: { params: { id: string } }) {
       setFeedback(null);
       setHasListenedToExample(false);
       setBreathingPhase(null);
+      setRecordedAudioBlob(null);
+      setVocalFeedback(null);
       setMaestroMood('encouraging');
       setMaestroMsg('Allez, exercice suivant ! Tu gères.');
       setPhase('practice');
@@ -1049,6 +1132,8 @@ export default function LessonPage({ params }: { params: { id: string } }) {
     setCentsOff(0);
     setHasListenedToExample(false);
     setBreathingPhase(null);
+    setRecordedAudioBlob(null);
+    setVocalFeedback(null);
     pitchHistoryRef.current = [];
     fullPitchHistoryRef.current = [];
     audioDataRef.current = [];
@@ -1121,7 +1206,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
             </div>
             <div className="rounded-3xl glass p-6 shadow-xl relative overflow-hidden">
               <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Score moyen</div>
-              <div className="font-display text-4xl font-extrabold text-foreground mt-2">{avg}<span className="text-lg text-muted-foreground">/100</span></div>
+              <div className="font-display text-4xl font-extrabold text-foreground mt-2"><AnimatedNumber value={avg} /><span className="text-lg text-muted-foreground">/100</span></div>
               <div className="h-2 rounded-full bg-muted overflow-hidden mt-4">
                 <div className={cn('h-full rounded-full transition-all duration-1000 bg-gradient-to-r from-primary via-secondary to-accent')} style={{ width: `${avg}%` }} />
               </div>
@@ -1430,7 +1515,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
             {phase === 'result' && feedback && (
               <div className="space-y-5 animate-scale-in">
                 <div className="text-center py-2">
-                  <div className="font-display text-4xl font-extrabold text-foreground tabular-nums">{feedback.score}<span className="text-lg text-muted-foreground font-semibold">/100</span></div>
+                  <div className="font-display text-4xl font-extrabold text-foreground tabular-nums"><AnimatedNumber value={feedback.score} /><span className="text-lg text-muted-foreground font-semibold">/100</span></div>
                   <div className={cn('text-xs font-bold uppercase tracking-wider mt-2', feedback.score >= 90 ? 'text-success' : 'text-orange-500')}>
                     {feedback.score >= 90 ? 'Performance Validée ! ✨' : 'Score insuffisant (requis: 90%) ⚠️'}
                   </div>
@@ -1450,6 +1535,32 @@ export default function LessonPage({ params }: { params: { id: string } }) {
                   <Sparkles className="w-5 h-5 text-secondary shrink-0 mt-0.5 animate-pulse" />
                   <p className="text-xs text-foreground/80 leading-relaxed font-medium">{feedback.tip}</p>
                 </div>
+
+                {/* Avis qualitatif du Coach IA sur l'enregistrement réel (au-delà du score chiffré) */}
+                {recordedAudioBlob && !isQuiz && (
+                  <div className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-2.5">
+                    {!vocalFeedback && !loadingVocalFeedback && (
+                      <button
+                        onClick={requestVocalFeedback}
+                        className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-secondary/15 border border-secondary/25 text-secondary text-xs font-bold hover:bg-secondary/25 transition-colors"
+                      >
+                        <Brain className="w-3.5 h-3.5" /> Demander l'avis du Coach IA sur ma voix
+                      </button>
+                    )}
+                    {loadingVocalFeedback && (
+                      <div className="flex items-center justify-center gap-2 py-2 text-xs text-muted-foreground animate-pulse">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Le Coach IA écoute ton enregistrement...
+                      </div>
+                    )}
+                    {vocalFeedback && (
+                      <div className="flex gap-2.5 animate-fade-in">
+                        <Brain className="w-4 h-4 text-secondary shrink-0 mt-0.5" />
+                        <p className="text-xs text-foreground/80 leading-relaxed">{vocalFeedback}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {feedback.score >= 90 ? (
                   <button onClick={nextExercise} className="w-full py-4 rounded-2xl bg-gradient-to-r from-primary to-secondary text-primary-foreground font-bold text-sm hover:opacity-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20">
                     {currentIdx + 1 >= exercises.length ? 'Terminer' : 'Exercice suivant'} <ChevronRight className="w-4 h-4" />

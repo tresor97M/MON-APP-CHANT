@@ -171,6 +171,9 @@ export type HymnProgress = {
   self_rating: number | null;
   validated_by: string | null;
   last_listened_at: string | null;
+  next_review_at: string | null;
+  review_interval_days: number;
+  ease_factor: number;
   updated_at: string;
 };
 

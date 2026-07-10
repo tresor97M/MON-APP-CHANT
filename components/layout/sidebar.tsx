@@ -7,7 +7,7 @@ import {
   Home, Music, CalendarDays, Trophy, Settings,
   GraduationCap, Sparkles, LayoutDashboard,
   BookOpenCheck, Stethoscope, ShieldCheck, Users, ClipboardCheck, Megaphone, Table2, User,
-  Mail, MicVocal,
+  Mail, MicVocal, ScrollText, Ear,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
@@ -22,6 +22,7 @@ const BOTTOM_NAV = [
   { href: '/repetitions',  label: 'Répétitions', icon: MicVocal },
   { href: '/parcours',     label: 'Parcours',    icon: BookOpenCheck },
   { href: '/formation',    label: 'Formation',   icon: GraduationCap },
+  { href: '/solfege',      label: 'Solfège',     icon: Ear },
   { href: '/coach',        label: 'Coach IA',    icon: Sparkles },
   { href: '/ligue',        label: 'Classement',  icon: Trophy },
   { href: '/communaute',   label: 'Communauté',  icon: Users },
@@ -56,7 +57,10 @@ function getSections(role: string | undefined, isAdminView: boolean): NavSection
           { href: '/admin/evaluations', label: 'Évaluations & Lacunes', icon: Stethoscope },
           { href: '/admin/formation', label: 'Formation', icon: GraduationCap },
           { href: '/admin/annonces', label: 'Annonces', icon: Megaphone },
-          ...(canManageRoles(role) ? [{ href: '/admin/acces', label: 'Gestion Accès', icon: ShieldCheck }] : []),
+          ...(canManageRoles(role) ? [
+            { href: '/admin/acces', label: 'Gestion Accès', icon: ShieldCheck },
+            { href: '/admin/journal', label: 'Journal d\'audit', icon: ScrollText },
+          ] : []),
         ],
       },
       {
@@ -85,6 +89,7 @@ function getSections(role: string | undefined, isAdminView: boolean): NavSection
         { href: '/repetitions', label: 'Répétitions', icon: MicVocal },
         { href: '/parcours', label: 'Parcours & Cours', icon: BookOpenCheck },
         { href: '/formation', label: 'Formations spécifiques', icon: GraduationCap },
+        { href: '/solfege', label: 'Oreille musicale', icon: Ear },
         { href: '/coach', label: 'Coach IA (Bêta)', icon: Sparkles },
         { href: '/ligue', label: 'Classement', icon: Trophy },
         { href: '/communaute', label: 'Communauté / Forum', icon: Users },
@@ -223,7 +228,10 @@ function BottomNav() {
     { href: '/admin/evaluations',  label: 'Éval.',       icon: Stethoscope },
     { href: '/admin/formation',    label: 'Formation',   icon: GraduationCap },
     { href: '/admin/annonces',     label: 'Annonces',    icon: Megaphone },
-    ...(canManageRoles(role) ? [{ href: '/admin/acces', label: 'Accès', icon: ShieldCheck }] : []),
+    ...(canManageRoles(role) ? [
+      { href: '/admin/acces', label: 'Accès', icon: ShieldCheck },
+      { href: '/admin/journal', label: 'Journal', icon: ScrollText },
+    ] : []),
   ] : BOTTOM_NAV;
 
   useEffect(() => {

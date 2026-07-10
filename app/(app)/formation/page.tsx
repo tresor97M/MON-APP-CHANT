@@ -532,13 +532,6 @@ function VideoPlayerModal({
               Regardez la vidéo jusqu'au bout pour pouvoir terminer le module.
             </p>
           )}
-          
-          <button 
-            onClick={() => { onVideoEnded(); setJustEnded(true); }}
-            className="text-[10px] text-white/20 hover:text-white/40 self-center mt-1 transition-colors"
-          >
-            Passer la vidéo (Simuler)
-          </button>
         </div>
       </DialogContent>
     </Dialog>

@@ -17,6 +17,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ReviewsDueWidget } from '@/components/hymns/reviews-due-widget';
 
 function fmtDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -189,6 +190,8 @@ export default function HomePage() {
           Niveau {profile?.learning_profile ?? '1'}
         </div>
       </header>
+
+      <ReviewsDueWidget />
 
       {/* ── Attendance / Progress card (Lumina-style) ── */}
       <section

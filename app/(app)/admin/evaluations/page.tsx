@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Target, Loader2 } from 'lucide-react';
+import { Plus, Target, Loader2, Wand2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { UserProfile } from '@/lib/supabase';
 import { useAuth } from '@/hooks/use-auth';
@@ -37,6 +37,7 @@ export default function AdminEvaluationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<SkillGap['status'] | 'all'>('all');
   const [form, setForm] = useState({ user_id: '', category: 'justesse' as GapCategory, severity: 2, note: '' });
+  const [assigningId, setAssigningId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [gapRes, memRes] = await Promise.all([
@@ -96,6 +97,60 @@ export default function AdminEvaluationsPage() {
   const updateStatus = async (gap: SkillGap, status: SkillGap['status']) => {
     await supabase.from('skill_gaps').update({ status, updated_at: new Date().toISOString() }).eq('id', gap.id);
     load();
+  };
+
+  /**
+   * Ferme la boucle lacune -> parcours : jusqu'ici, `training_paths` avait
+   * bien une colonne `target_gap_category` prévue pour ça, mais rien dans
+   * l'admin ne la consultait jamais pour proposer/assigner un parcours en
+   * réponse à une lacune identifiée. Matching automatique par catégorie
+   * (+ pupitre si renseigné), sans doublon.
+   */
+  const assignPlan = async (gap: GapWithUser) => {
+    setAssigningId(gap.id);
+    const { data: paths } = await supabase
+      .from('training_paths')
+      .select('*')
+      .eq('target_gap_category', gap.category)
+      .eq('is_open', true);
+
+    const voice = gap.user_profiles?.voice_part;
+    const match = (paths || []).find(p => !p.voice_part || p.voice_part === voice) || paths?.[0];
+
+    if (!match) {
+      setAssigningId(null);
+      alert(`Aucun parcours de formation ouvert ne correspond à la catégorie "${GAP_LABELS[gap.category]}" pour le moment. Crée-en un dans Formation.`);
+      return;
+    }
+
+    const { data: existing } = await supabase
+      .from('training_assignments')
+      .select('id')
+      .eq('path_id', match.id)
+      .eq('user_id', gap.user_id)
+      .maybeSingle();
+
+    if (existing) {
+      setAssigningId(null);
+      alert(`Le parcours "${match.name}" est déjà assigné à ce membre.`);
+      return;
+    }
+
+    const { error: e } = await supabase.from('training_assignments').insert({
+      path_id: match.id,
+      user_id: gap.user_id,
+      gap_id: gap.id,
+      assigned_by: user?.id || null,
+      status: 'assigne',
+    });
+    setAssigningId(null);
+    if (e) {
+      alert('Erreur lors de l\'assignation : ' + e.message);
+      return;
+    }
+    if (gap.status === 'identifiee') await updateStatus(gap, 'en_travail');
+    else load();
+    alert(`Parcours "${match.name}" assigné à ${gap.user_profiles?.display_name || 'ce membre'}.`);
   };
 
   const inputCls =
@@ -167,17 +222,30 @@ export default function AdminEvaluationsPage() {
                 </div>
                 {g.note && <p className="text-sm text-muted-foreground">{g.note}</p>}
               </div>
-              <select
-                value={g.status}
-                onChange={e => updateStatus(g, e.target.value as SkillGap['status'])}
-                aria-label="Statut de la lacune"
-                className={cn(
-                  'text-xs font-semibold rounded-lg border px-2.5 py-1.5 outline-none cursor-pointer bg-transparent shrink-0',
-                  GAP_STATUS_COLORS[g.status],
+              <div className="flex items-center gap-2 shrink-0">
+                {g.status !== 'resolue' && (
+                  <button
+                    onClick={() => assignPlan(g)}
+                    disabled={assigningId === g.id}
+                    title="Assigner automatiquement un parcours de formation correspondant à cette lacune"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors disabled:opacity-50"
+                  >
+                    {assigningId === g.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                    Assigner un parcours
+                  </button>
                 )}
-              >
-                {Object.entries(GAP_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
+                <select
+                  value={g.status}
+                  onChange={e => updateStatus(g, e.target.value as SkillGap['status'])}
+                  aria-label="Statut de la lacune"
+                  className={cn(
+                    'text-xs font-semibold rounded-lg border px-2.5 py-1.5 outline-none cursor-pointer bg-transparent shrink-0',
+                    GAP_STATUS_COLORS[g.status],
+                  )}
+                >
+                  {Object.entries(GAP_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
             </li>
           ))}
         </ul>
