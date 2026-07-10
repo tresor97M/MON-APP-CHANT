@@ -7,7 +7,7 @@ import {
   Home, Music, CalendarDays, Trophy, Settings,
   GraduationCap, Sparkles, LayoutDashboard,
   BookOpenCheck, Stethoscope, ShieldCheck, Users, ClipboardCheck, Megaphone, Table2, User,
-  Mail, MicVocal,
+  Mail, MicVocal, ScrollText,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
@@ -56,7 +56,10 @@ function getSections(role: string | undefined, isAdminView: boolean): NavSection
           { href: '/admin/evaluations', label: 'Évaluations & Lacunes', icon: Stethoscope },
           { href: '/admin/formation', label: 'Formation', icon: GraduationCap },
           { href: '/admin/annonces', label: 'Annonces', icon: Megaphone },
-          ...(canManageRoles(role) ? [{ href: '/admin/acces', label: 'Gestion Accès', icon: ShieldCheck }] : []),
+          ...(canManageRoles(role) ? [
+            { href: '/admin/acces', label: 'Gestion Accès', icon: ShieldCheck },
+            { href: '/admin/journal', label: 'Journal d\'audit', icon: ScrollText },
+          ] : []),
         ],
       },
       {
@@ -223,7 +226,10 @@ function BottomNav() {
     { href: '/admin/evaluations',  label: 'Éval.',       icon: Stethoscope },
     { href: '/admin/formation',    label: 'Formation',   icon: GraduationCap },
     { href: '/admin/annonces',     label: 'Annonces',    icon: Megaphone },
-    ...(canManageRoles(role) ? [{ href: '/admin/acces', label: 'Accès', icon: ShieldCheck }] : []),
+    ...(canManageRoles(role) ? [
+      { href: '/admin/acces', label: 'Accès', icon: ShieldCheck },
+      { href: '/admin/journal', label: 'Journal', icon: ScrollText },
+    ] : []),
   ] : BOTTOM_NAV;
 
   useEffect(() => {

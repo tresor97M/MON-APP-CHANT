@@ -9,7 +9,8 @@ import { useCelebration } from '@/hooks/use-celebration';
 import { useAuth } from '@/hooks/use-auth';
 import { Maestro, getMaestroMessage } from '@/components/maestro';
 import { AudioVisualizer, PulsingOrb } from '@/components/audio-visualizer';
-import { cn } from '@/lib/utils';
+import { AnimatedNumber } from '@/components/ui/animated-number';
+import { cn, levelForXp } from '@/lib/utils';
 import {
   autoCorrelate, hzToMidi, hzToNoteName, computePitchAccuracy, playPianoTone,
   playVoiceTone, playVibratoExample, playMelodySequence, playHarmonyChord,
@@ -979,13 +980,25 @@ export default function LessonPage({ params }: { params: { id: string } }) {
           const newTotalXp = us.total_xp + (lesson.xp_reward || 10);
           const newDailyXp = us.daily_xp + (lesson.xp_reward || 10);
           const newWeeklyXp = us.weekly_xp + (lesson.xp_reward || 10);
+          // `level` n'était jusqu'ici jamais recalculé nulle part dans le code
+          // (colonne figée à sa valeur de seed) — on le fait vivre ici.
+          const newLevel = levelForXp(newTotalXp);
+          const leveledUp = newLevel > (us.level || 1);
 
           await supabase.from('user_stats').update({
             total_xp: newTotalXp,
             daily_xp: newDailyXp,
             weekly_xp: newWeeklyXp,
+            level: newLevel,
             last_active_date: new Date().toISOString().slice(0, 10),
           }).eq('id', us.id);
+
+          if (leveledUp && typeof window !== 'undefined') {
+            // Se déclenche après la célébration de fin de leçon (voir plus bas).
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('los-levelup', { detail: { level: newLevel } }));
+            }, 900);
+          }
 
           // --- Système de Badges Dynamiques (Sprint 4) ---
           try {
@@ -1121,7 +1134,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
             </div>
             <div className="rounded-3xl glass p-6 shadow-xl relative overflow-hidden">
               <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Score moyen</div>
-              <div className="font-display text-4xl font-extrabold text-foreground mt-2">{avg}<span className="text-lg text-muted-foreground">/100</span></div>
+              <div className="font-display text-4xl font-extrabold text-foreground mt-2"><AnimatedNumber value={avg} /><span className="text-lg text-muted-foreground">/100</span></div>
               <div className="h-2 rounded-full bg-muted overflow-hidden mt-4">
                 <div className={cn('h-full rounded-full transition-all duration-1000 bg-gradient-to-r from-primary via-secondary to-accent')} style={{ width: `${avg}%` }} />
               </div>
@@ -1430,7 +1443,7 @@ export default function LessonPage({ params }: { params: { id: string } }) {
             {phase === 'result' && feedback && (
               <div className="space-y-5 animate-scale-in">
                 <div className="text-center py-2">
-                  <div className="font-display text-4xl font-extrabold text-foreground tabular-nums">{feedback.score}<span className="text-lg text-muted-foreground font-semibold">/100</span></div>
+                  <div className="font-display text-4xl font-extrabold text-foreground tabular-nums"><AnimatedNumber value={feedback.score} /><span className="text-lg text-muted-foreground font-semibold">/100</span></div>
                   <div className={cn('text-xs font-bold uppercase tracking-wider mt-2', feedback.score >= 90 ? 'text-success' : 'text-orange-500')}>
                     {feedback.score >= 90 ? 'Performance Validée ! ✨' : 'Score insuffisant (requis: 90%) ⚠️'}
                   </div>

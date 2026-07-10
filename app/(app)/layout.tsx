@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Sidebar } from '@/components/layout/sidebar';
 import { TopBar } from '@/components/layout/topbar';
 import { ConfettiCanvas } from '@/hooks/use-celebration';
+import { LevelUpOverlay } from '@/components/layout/level-up-overlay';
 import { Mic2 } from 'lucide-react';
 
 export default function AppShellLayout({ children }: { children: React.ReactNode }) {
@@ -58,6 +59,7 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
       </div>
 
       <ConfettiCanvas />
+      <LevelUpOverlay />
     </div>
   );
 }

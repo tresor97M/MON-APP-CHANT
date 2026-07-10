@@ -7,11 +7,12 @@ import { useLang } from '@/hooks/use-lang';
 import { supabase, type UserProfile } from '@/lib/supabase';
 import { Shield, Save, User, Check, X, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
+import { logAdminAction } from '@/lib/audit-log';
 
 export default function AccessControlPage() {
   const router = useRouter();
   const { lang } = useLang();
-  const { userProfile, loading: authLoading } = useAuth();
+  const { user, userProfile, loading: authLoading } = useAuth();
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -68,6 +69,7 @@ export default function AccessControlPage() {
 
   const handleSave = async (profile: UserProfile) => {
     setSavingId(profile.id);
+    const before = profiles.find(p => p.id === profile.id);
     const { error } = await supabase
       .from('user_profiles')
       .update({
@@ -82,6 +84,21 @@ export default function AccessControlPage() {
     if (error) {
       alert(lang === 'fr' ? 'Erreur lors de la sauvegarde : ' + error.message : 'Error saving: ' + error.message);
     } else {
+      if (user) {
+        logAdminAction(
+          user.id,
+          userProfile?.display_name || user.email || null,
+          'role_change',
+          'user_profiles',
+          profile.id,
+          {
+            target_user: profile.display_name,
+            role_before: before?.role,
+            role_after: profile.role,
+            permissions_after: profile.admin_permissions || [],
+          }
+        );
+      }
       alert(lang === 'fr' ? 'Droits enregistrés avec succès !' : 'Permissions saved successfully!');
     }
   };
@@ -147,7 +164,7 @@ export default function AccessControlPage() {
                         value={p.role} 
                         onChange={e => handleRoleChange(p.id, e.target.value)}
                         className="px-2 py-1 text-xs border border-border bg-slate-50 rounded-lg outline-none focus:border-primary">
-                        <option value="student">{lang === 'fr' ? 'Utilisateur' : 'User'}</option>
+                        <option value="choriste">{lang === 'fr' ? 'Choriste' : 'Chorister'}</option>
                         <option value="admin">Admin</option>
                         <option value="super_admin">Super Admin</option>
                       </select>

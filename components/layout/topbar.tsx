@@ -11,6 +11,8 @@ import { usePathname } from 'next/navigation';
 import { isStaff } from '@/lib/permissions';
 import type { ChoirStats, Announcement } from '@/lib/types';
 import { VOICE_LABELS, ROLE_LABELS, type Role, type VoicePart } from '@/lib/types';
+import { AnimatedNumber } from '@/components/ui/animated-number';
+import { cn } from '@/lib/utils';
 
 export function TopBar() {
   const [stats, setStats] = useState<ChoirStats | null>(null);
@@ -123,10 +125,10 @@ export function TopBar() {
         <div className="flex items-center gap-3 text-sm font-semibold">
           {stats && (
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sidebar-foreground/10 border border-sidebar-border text-xs">
-              <Flame className="w-3.5 h-3.5 text-accent" />
-              <span>{stats.streak_weeks} sem.</span>
+              <Flame className={cn('w-3.5 h-3.5 text-accent', stats.streak_weeks > 0 && 'animate-pulse')} />
+              <span><AnimatedNumber value={stats.streak_weeks} /> sem.</span>
               <span className="text-sidebar-foreground/40">·</span>
-              <span className="text-primary">{stats.total_xp} XP</span>
+              <span className="text-primary"><AnimatedNumber value={stats.total_xp} /> XP</span>
             </div>
           )}
 

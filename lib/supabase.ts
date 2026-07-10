@@ -65,6 +65,12 @@ export type UserProfile = {
   created_at: string; updated_at: string;
 };
 
+export type AdminAuditLogEntry = {
+  id: string; actor_id: string | null; actor_name: string | null;
+  action: string; target_type: string; target_id: string | null;
+  details: Record<string, unknown> | null; created_at: string;
+};
+
 export type Conversation = {
   id: string; participant_a: string; participant_b: string;
   last_message: string | null; last_message_at: string; created_at: string;
