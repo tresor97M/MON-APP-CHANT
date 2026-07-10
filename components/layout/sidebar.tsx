@@ -7,7 +7,7 @@ import {
   Home, Music, CalendarDays, Trophy, Settings,
   GraduationCap, Sparkles, LayoutDashboard,
   BookOpenCheck, Stethoscope, ShieldCheck, Users, ClipboardCheck, Megaphone, Table2, User,
-  Mail, MicVocal, ScrollText,
+  Mail, MicVocal, ScrollText, Ear,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
@@ -22,6 +22,7 @@ const BOTTOM_NAV = [
   { href: '/repetitions',  label: 'Répétitions', icon: MicVocal },
   { href: '/parcours',     label: 'Parcours',    icon: BookOpenCheck },
   { href: '/formation',    label: 'Formation',   icon: GraduationCap },
+  { href: '/solfege',      label: 'Solfège',     icon: Ear },
   { href: '/coach',        label: 'Coach IA',    icon: Sparkles },
   { href: '/ligue',        label: 'Classement',  icon: Trophy },
   { href: '/communaute',   label: 'Communauté',  icon: Users },
@@ -88,6 +89,7 @@ function getSections(role: string | undefined, isAdminView: boolean): NavSection
         { href: '/repetitions', label: 'Répétitions', icon: MicVocal },
         { href: '/parcours', label: 'Parcours & Cours', icon: BookOpenCheck },
         { href: '/formation', label: 'Formations spécifiques', icon: GraduationCap },
+        { href: '/solfege', label: 'Oreille musicale', icon: Ear },
         { href: '/coach', label: 'Coach IA (Bêta)', icon: Sparkles },
         { href: '/ligue', label: 'Classement', icon: Trophy },
         { href: '/communaute', label: 'Communauté / Forum', icon: Users },

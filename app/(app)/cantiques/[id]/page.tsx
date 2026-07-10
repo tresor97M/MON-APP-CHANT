@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/use-auth';
 import { canManageHymns } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
+import { computeNextReview, type ReviewRating, type ReviewState } from '@/lib/spaced-repetition';
 import {
   HYMN_CATEGORIES, LEARNING_STATUS_LABELS, LEARNING_STATUS_COLORS,
   OCCASION_LABELS, PROGRESS_LABELS,
@@ -72,6 +73,38 @@ export default function CantiqueDetailPage() {
       .from('hymn_progress')
       .upsert(
         { user_id: user.id, hymn_id: id, status, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id,hymn_id' },
+      )
+      .select()
+      .single();
+    if (data) setProgress(data);
+    setSaving(false);
+  };
+
+  const rateReview = async (rating: ReviewRating) => {
+    if (!user || !id || saving) return;
+    setSaving(true);
+    const prev: ReviewState = {
+      intervalDays: progress?.review_interval_days || 1,
+      easeFactor: progress?.ease_factor || 2.5,
+    };
+    const { intervalDays, easeFactor, nextReviewAt } = computeNextReview(rating, prev);
+    const selfRating = rating === 'difficile' ? 2 : rating === 'bien' ? 3 : 5;
+
+    const { data } = await supabase
+      .from('hymn_progress')
+      .upsert(
+        {
+          user_id: user.id,
+          hymn_id: id,
+          status: progress?.status || 'en_cours',
+          self_rating: selfRating,
+          review_interval_days: intervalDays,
+          ease_factor: easeFactor,
+          next_review_at: nextReviewAt,
+          last_listened_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
         { onConflict: 'user_id,hymn_id' },
       )
       .select()
@@ -190,6 +223,43 @@ export default function CantiqueDetailPage() {
           Le statut « Validé » est attribué par le maître de chœur après évaluation.
         </p>
       </section>
+
+      {/* Révision espacée */}
+      {progress && progress.status !== 'a_apprendre' && (
+        <section className="rounded-2xl border border-border bg-card p-6 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="font-display text-lg font-bold text-foreground">Révision espacée</h2>
+            {progress.next_review_at && (
+              <span className="text-xs text-muted-foreground">
+                {new Date(progress.next_review_at) <= new Date()
+                  ? 'À réviser aujourd\'hui'
+                  : `Prochaine révision : ${new Date(progress.next_review_at).toLocaleDateString('fr-FR')}`}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Après avoir répété ce cantique, dis-nous à quel point tu le connais — l'intervalle avant la prochaine révision s'ajuste automatiquement (plus court si c'est encore difficile, plus long si c'est acquis).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(['difficile', 'bien', 'facile'] as const).map((rating) => (
+              <button
+                key={rating}
+                type="button"
+                disabled={saving}
+                onClick={() => rateReview(rating)}
+                className={cn(
+                  'px-4 py-2 rounded-xl text-sm font-semibold border transition-colors',
+                  rating === 'difficile' && 'bg-card text-orange-600 border-orange-200 hover:bg-orange-50',
+                  rating === 'bien' && 'bg-card text-primary border-primary/30 hover:bg-primary/10',
+                  rating === 'facile' && 'bg-card text-emerald-600 border-emerald-200 hover:bg-emerald-50',
+                )}
+              >
+                {rating === 'difficile' ? 'Difficile, à revoir vite' : rating === 'bien' ? 'Bien, je le connais' : 'Facile, acquis'}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Audios par voix */}
       <section className="rounded-2xl border border-border bg-card p-6 space-y-3">
