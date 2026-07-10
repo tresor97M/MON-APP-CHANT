@@ -119,33 +119,64 @@ const HYMN_MIDI_DATA: Record<string, HymnTracks> = {
   }
 };
 
-// Notes par défaut si le cantique n'est pas renseigné (une simple gamme majeure pour Soprano/Alto/Ténor/Basse)
-const DEFAULT_MIDI_DATA: HymnTracks = {
-  soprano: [
-    { pitch: 60, duration: 1 }, { pitch: 62, duration: 1 }, { pitch: 64, duration: 1 }, { pitch: 65, duration: 1 },
-    { pitch: 67, duration: 1 }, { pitch: 69, duration: 1 }, { pitch: 71, duration: 1 }, { pitch: 72, duration: 2 },
-    { pitch: 71, duration: 1 }, { pitch: 69, duration: 1 }, { pitch: 67, duration: 1 }, { pitch: 65, duration: 1 },
-    { pitch: 64, duration: 1 }, { pitch: 62, duration: 1 }, { pitch: 60, duration: 3 }
-  ],
-  alto: [
-    { pitch: 55, duration: 1 }, { pitch: 57, duration: 1 }, { pitch: 59, duration: 1 }, { pitch: 60, duration: 1 },
-    { pitch: 62, duration: 1 }, { pitch: 64, duration: 1 }, { pitch: 66, duration: 1 }, { pitch: 67, duration: 2 },
-    { pitch: 66, duration: 1 }, { pitch: 64, duration: 1 }, { pitch: 62, duration: 1 }, { pitch: 60, duration: 1 },
-    { pitch: 59, duration: 1 }, { pitch: 57, duration: 1 }, { pitch: 55, duration: 3 }
-  ],
-  tenor: [
-    { pitch: 48, duration: 1 }, { pitch: 50, duration: 1 }, { pitch: 52, duration: 1 }, { pitch: 53, duration: 1 },
-    { pitch: 55, duration: 1 }, { pitch: 57, duration: 1 }, { pitch: 59, duration: 1 }, { pitch: 60, duration: 2 },
-    { pitch: 59, duration: 1 }, { pitch: 57, duration: 1 }, { pitch: 55, duration: 1 }, { pitch: 53, duration: 1 },
-    { pitch: 52, duration: 1 }, { pitch: 50, duration: 1 }, { pitch: 48, duration: 3 }
-  ],
-  bass: [
-    { pitch: 43, duration: 1 }, { pitch: 43, duration: 1 }, { pitch: 47, duration: 1 }, { pitch: 48, duration: 1 },
-    { pitch: 50, duration: 1 }, { pitch: 50, duration: 1 }, { pitch: 47, duration: 1 }, { pitch: 43, duration: 2 },
-    { pitch: 47, duration: 1 }, { pitch: 50, duration: 1 }, { pitch: 50, duration: 1 }, { pitch: 48, duration: 1 },
-    { pitch: 47, duration: 1 }, { pitch: 43, duration: 1 }, { pitch: 43, duration: 3 }
-  ]
-};
+// ⚠️ PLACEHOLDER — tant que HYMN_MIDI_DATA n'a pas d'entrée transcrite pour
+// un cantique, on ne peut pas connaître sa vraie mélodie sans partition
+// réelle. Plutôt que de faire jouer à TOUS les cantiques non renseignés la
+// même gamme unique (ce qui n'a aucun rapport avec le chant réel), on génère
+// un motif générique mais DIFFÉRENT par cantique (déterministe à partir de
+// son id), pour au moins donner un repère de hauteur variable en attendant
+// la vraie transcription. À remplacer par de vraies données dans
+// HYMN_MIDI_DATA dès qu'elles sont disponibles.
+function hashSeed(str: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function mulberry32(seed: number) {
+  let a = seed;
+  return () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Gamme majeure (degrés en demi-tons depuis la fondamentale)
+const MAJOR_SCALE_STEPS = [0, 2, 4, 5, 7, 9, 11, 12];
+
+function generatePlaceholderTracks(seedKey: string): HymnTracks {
+  const rand = mulberry32(hashSeed(seedKey));
+  const rootMidi = 60 + Math.floor(rand() * 5) - 2; // Do4 ± 2 demi-tons, pour varier d'un cantique à l'autre
+  const NUM_NOTES = 12;
+  const durations = [1, 1, 1, 2];
+
+  const sopranoDegrees: number[] = [];
+  let degreeIdx = 0;
+  for (let i = 0; i < NUM_NOTES; i++) {
+    sopranoDegrees.push(degreeIdx);
+    const step = rand() < 0.5 ? 1 : -1;
+    degreeIdx = Math.max(0, Math.min(MAJOR_SCALE_STEPS.length - 1, degreeIdx + step));
+  }
+  sopranoDegrees[sopranoDegrees.length - 1] = 0; // termine sur la tonique, comme une cadence
+
+  const soprano: Note[] = sopranoDegrees.map((d, i) => ({
+    pitch: rootMidi + MAJOR_SCALE_STEPS[d],
+    duration: i === sopranoDegrees.length - 1 ? 3 : durations[i % durations.length],
+  }));
+
+  // Harmonisation approximative en parallèle (tierce/quinte/octave en-dessous) —
+  // simple heuristique, pas une vraie écriture chorale à 4 voix.
+  const alto: Note[] = soprano.map((n) => ({ pitch: n.pitch - 4, duration: n.duration }));
+  const tenor: Note[] = soprano.map((n) => ({ pitch: n.pitch - 12, duration: n.duration }));
+  const bass: Note[] = soprano.map((n) => ({ pitch: n.pitch - 17, duration: n.duration }));
+
+  return { soprano, alto, tenor, bass };
+}
 
 function midiToFrequency(note: number): number {
   return 440 * Math.pow(2, (note - 69) / 12);
@@ -155,6 +186,7 @@ export function InteractiveMidiPlayer({ hymnId, hymnTitle }: { hymnId: string; h
   const [isPlaying, setIsPlaying] = useState(false);
   const [bpm, setBpm] = useState(90);
   const [currentBeat, setCurrentBeat] = useState(0);
+  const currentBeatRef = useRef(0); // miroir non-figé de currentBeat, lu depuis le setInterval
   const [totalBeats, setTotalBeats] = useState(0);
 
   // Volumes (de 0 à 100)
@@ -194,7 +226,8 @@ export function InteractiveMidiPlayer({ hymnId, hymnTitle }: { hymnId: string; h
     .replace(/[^a-z0-9]+/g, '-') // Remplacer par des traits d'union
     .replace(/(^-|-$)/g, ''); // Nettoyer extrémités
 
-  const tracks = HYMN_MIDI_DATA[slug] || DEFAULT_MIDI_DATA;
+  const hasRealTranscription = Boolean(HYMN_MIDI_DATA[slug]);
+  const tracks = HYMN_MIDI_DATA[slug] || generatePlaceholderTracks(slug || hymnId);
 
   // Calcul du nombre total de temps (beats)
   useEffect(() => {
@@ -277,7 +310,11 @@ export function InteractiveMidiPlayer({ hymnId, hymnTitle }: { hymnId: string; h
     playStateRef.current.activeOscillators[voice].push(osc1, osc2, gainNode);
   };
 
-  const scheduleNextNotes = (beatTime: number) => {
+  // `beat` est passé explicitement (pas lu depuis le state `currentBeat` du
+  // render courant) : un setInterval créé une seule fois dans startPlayback
+  // capturerait sinon une closure figée sur le `currentBeat` d'origine, et
+  // ne rejouerait indéfiniment que la toute première note de chaque voix.
+  const scheduleNextNotes = (beat: number, beatTime: number) => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
 
@@ -287,19 +324,17 @@ export function InteractiveMidiPlayer({ hymnId, hymnTitle }: { hymnId: string; h
     const voices = ['soprano', 'alto', 'tenor', 'bass'] as const;
     voices.forEach(voice => {
       const track = tracks[voice];
-      
-      // Trouver la note active au "currentBeat"
+
+      // Trouver la note active au temps `beat`
       let accumulatedBeats = 0;
-      let noteFound = false;
 
       for (let i = 0; i < track.length; i++) {
         const note = track[i];
-        if (currentBeat >= accumulatedBeats && currentBeat < accumulatedBeats + note.duration) {
+        if (beat >= accumulatedBeats && beat < accumulatedBeats + note.duration) {
           // Si on commence exactement ce beat de note
-          if (currentBeat === accumulatedBeats) {
+          if (beat === accumulatedBeats) {
             playSynthesizedTone(voice, note.pitch, beatTime, note.duration * beatDuration);
           }
-          noteFound = true;
           break;
         }
         accumulatedBeats += note.duration;
@@ -312,11 +347,11 @@ export function InteractiveMidiPlayer({ hymnId, hymnTitle }: { hymnId: string; h
     setIsPlaying(true);
 
     const intervalMs = (60 / bpm) * 1000;
-    
+
     // Jouer le premier temps immédiatement
     const ctx = audioCtxRef.current;
     if (ctx) {
-      scheduleNextNotes(ctx.currentTime);
+      scheduleNextNotes(currentBeatRef.current, ctx.currentTime);
     }
 
     timerRef.current = setInterval(() => {
@@ -324,13 +359,15 @@ export function InteractiveMidiPlayer({ hymnId, hymnTitle }: { hymnId: string; h
         const next = prev + 1;
         if (next >= totalBeats) {
           stopPlayback();
+          currentBeatRef.current = 0;
           return 0;
         }
-        
+
+        currentBeatRef.current = next;
         const ctx = audioCtxRef.current;
         if (ctx) {
           // Prévoir la note 50ms dans le futur pour éviter le jitter
-          scheduleNextNotes(ctx.currentTime + 0.05);
+          scheduleNextNotes(next, ctx.currentTime + 0.05);
         }
         return next;
       });
@@ -366,6 +403,7 @@ export function InteractiveMidiPlayer({ hymnId, hymnTitle }: { hymnId: string; h
 
   const handleReset = () => {
     stopPlayback();
+    currentBeatRef.current = 0;
     setCurrentBeat(0);
   };
 
@@ -406,8 +444,22 @@ export function InteractiveMidiPlayer({ hymnId, hymnTitle }: { hymnId: string; h
             <Radio className="w-5 h-5 animate-pulse" />
           </div>
           <div>
-            <h3 className="font-display font-bold text-sm text-white">Synthétiseur MIDI de partition</h3>
-            <p className="text-xs text-white/50">Isolez les voix pour travailler votre justesse.</p>
+            <h3 className="font-display font-bold text-sm text-white flex items-center gap-2 flex-wrap">
+              Synthétiseur MIDI de partition
+              {!hasRealTranscription && (
+                <span
+                  className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20"
+                  title="Mélodie approximative générée automatiquement, en attendant la vraie transcription de ce cantique"
+                >
+                  Motif provisoire
+                </span>
+              )}
+            </h3>
+            <p className="text-xs text-white/50">
+              {hasRealTranscription
+                ? 'Isolez les voix pour travailler votre justesse.'
+                : 'Mélodie non encore transcrite — motif indicatif, pas la partition réelle.'}
+            </p>
           </div>
         </div>
 
